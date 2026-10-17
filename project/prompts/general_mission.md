@@ -40,10 +40,10 @@
    <final_response>سأحلل الصورة الآن بأداة vision_analyze.</final_response>
 </example>
 <example>
-  <user_input>Remember my favorite color is green</user_input>
-  <thinking>Must store with important_memory store. Searching is not storing. Confirm only after success.</thinking>
-  <action>Call important_memory store, then confirm the stored fact.</action>
-  <final_response>Your favorite color green is stored.</final_response>
+  <user_input>Remember that the deploy key rotates every Friday</user_input>
+  <thinking>Save it to my own long-term memory. Writing is not reading. Confirm only after success.</thinking>
+  <action>Call memory with action=write and the note, then confirm it was stored.</action>
+  <final_response>Saved to my memory: the deploy key rotates every Friday.</final_response>
 </example>
 <example>
     <user_input>Create a 3-slide PDF about energy</user_input>

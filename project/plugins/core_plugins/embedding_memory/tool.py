@@ -1,9 +1,9 @@
 """
 embedding_memory - semantic text memory behind tool_search.
-Stores one text as one local Qwen3 embedding chunk in X5Agent/Data/vector
+Stores one text as one local embedding chunk in X5Agent/Data/vector/chroma
 and retrieves the most similar chunks for a query sentence via cosine similarity.
 New schema: reason + text (store) + query (search-only) + top_k (count).
-Persistent across restarts, bounded (500 entries, oldest dropped first).
+Persistent across restarts, unbounded (grows with stored texts).
 """
 from __future__ import annotations
 
@@ -16,57 +16,92 @@ from typing import Any
 from .events import format_event
 
 ALLOWED = {"store", "search", "list", "get", "delete", "clear"}
-MAX_ENTRIES = 500
 MAX_TEXT_LEN = 2000
 DEFAULT_TOP_K = 5
 MAX_TOP_K = 10
 
+_COLLECTION = "embedding_memory"
+_PROJECT = Path(__file__).resolve().parents[3]
 
-def _store_path() -> Path:
+# Old JSON store (pre-Chroma). Entries are merged once on first use: unlike
+# chat/document vectors these texts cannot be re-derived from anything else.
+_LEGACY_CANDIDATES = (
+    _PROJECT / "storage" / "vector" / "embedding_memory.json",
+)
+
+
+def _legacy_candidates() -> tuple[Path, ...]:
+    out = list(_LEGACY_CANDIDATES)
     try:
         import sys as _sys
-        _proj = Path(__file__).resolve().parents[3]
-        if str(_proj) not in _sys.path:
-            _sys.path.insert(0, str(_proj))
-        from core.paths import data_vector_file
-        return data_vector_file("embedding_memory.json")
+        if str(_PROJECT) not in _sys.path:
+            _sys.path.insert(0, str(_PROJECT))
+        from core.paths import data_vector_dir
+        out.insert(0, data_vector_dir() / "embedding_memory.json")
     except Exception:
-        return Path(__file__).resolve().parents[3] / "storage" / "vector" / "embedding_memory.json"
+        pass
+    return tuple(out)
 
 
-STORE_PATH = _store_path()
-_STORE_LEGACY = Path(__file__).resolve().parents[3] / "storage" / "vector" / "embedding_memory.json"
+def _vb():
+    import sys as _sys
+    if str(_PROJECT) not in _sys.path:
+        _sys.path.insert(0, str(_PROJECT))
+    from core.embedding import vector_db
+    return vector_db
 
 
-def _load() -> list[dict]:
-    for cand in (STORE_PATH, _STORE_LEGACY):
-        if not cand.exists():
-            continue
+def _read_legacy_entries() -> list[dict]:
+    for cand in _legacy_candidates():
         try:
+            if not cand.exists():
+                continue
             data = json.loads(cand.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and isinstance(data.get("entries"), list):
-                return data["entries"]
-            if isinstance(data, list):
-                return data
+            entries = data.get("entries") if isinstance(data, dict) else data
+            if not isinstance(entries, list):
+                continue
+            clean = [e for e in entries
+                     if isinstance(e, dict) and isinstance(e.get("text"), str)
+                     and e["text"].strip() and isinstance(e.get("embedding"), list)
+                     and e["embedding"]]
+            if clean:
+                return clean
         except Exception:
             continue
     return []
 
 
-def _save(entries: list[dict]) -> None:
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if len(entries) > MAX_ENTRIES:
-        entries = entries[-MAX_ENTRIES:]
-    tmp = STORE_PATH.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"entries": entries, "count": len(entries)},
-                              ensure_ascii=False), encoding="utf-8")
-    tmp.replace(STORE_PATH)
+_IMPORT_CHECKED = False
+
+
+def _ensure_imported() -> None:
+    """One-time merge of the legacy JSON store into Chroma. Never raises."""
+    global _IMPORT_CHECKED
+    if _IMPORT_CHECKED:
+        return
+    _IMPORT_CHECKED = True
+    try:
+        vb = _vb()
+        if vb.count(_COLLECTION) > 0:
+            return
+        entries = _read_legacy_entries()
+        if not entries:
+            return
+        ids = [str(e.get("id") or uuid.uuid4().hex[:8]) for e in entries]
+        embs = [[float(x) for x in e["embedding"]] for e in entries]
+        texts = [e["text"] for e in entries]
+        metas = [{"text": e["text"], "created_at": str(e.get("created_at") or "")}
+                 for e in entries]
+        vb.upsert(_COLLECTION, ids, embs, texts, metas)
+    except Exception:
+        pass
 
 
 def count_stored() -> int:
     """Number of stored embedding chunks. Never raises (0 on any failure)."""
     try:
-        return len(_load())
+        _ensure_imported()
+        return _vb().count(_COLLECTION)
     except Exception:
         return 0
 
@@ -87,47 +122,31 @@ def _validate_top_k(v: Any) -> int:
     return k
 
 
-def _cosine(q: list[float], m: list[float]) -> float:
-    import math
-    dot = sum(a * b for a, b in zip(q, m))
-    nq = math.sqrt(sum(a * a for a in q))
-    nm = math.sqrt(sum(b * b for b in m))
-    if nq == 0 or nm == 0:
-        return 0.0
-    return dot / (nq * nm)
-
-
 def _do_store(chunk: str) -> dict:
     from core.embedding.service import embed_texts
+    _ensure_imported()
     vectors = embed_texts([chunk], normalize=True)
-    entries = _load()
+    entry_id = uuid.uuid4().hex[:8]
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    entry = {"id": uuid.uuid4().hex[:8], "text": chunk,
-             "embedding": vectors[0], "created_at": now}
-    entries.append(entry)
-    _save(entries)
+    _vb().upsert(_COLLECTION, [entry_id], [vectors[0]], [chunk],
+                 [{"text": chunk, "created_at": now}])
     return {"event": format_event(text=chunk), "action": "store",
-            "stored": {"id": entry["id"], "text": chunk},
-            "total": len(entries)}
+            "stored": {"id": entry_id, "text": chunk},
+            "total": count_stored()}
 
 
 def _do_search(q: str, k: int) -> dict:
     from core.embedding.service import embed_query
-    entries = _load()
-    if not entries:
+    _ensure_imported()
+    vb = _vb()
+    if vb.count(_COLLECTION) == 0:
         return {"event": format_event(query=q), "action": "search",
                 "query": q, "results": [],
                 "note": "memory is empty, store a text first"}
-    qvec = embed_query(q)
-    scored = []
-    for e in entries:
-        emb = e.get("embedding")
-        if not isinstance(emb, list) or not emb:
-            continue
-        scored.append((round(_cosine(qvec, emb), 4), e))
-    scored.sort(reverse=True, key=lambda x: x[0])
-    results = [{"id": e["id"], "text": e["text"], "score": s}
-               for s, e in scored[:k]]
+    rows = vb.query(_COLLECTION, embed_query(q), k)
+    results = [{"id": r.get("id", ""),
+                "text": (r.get("metadata") or {}).get("text", r.get("document", "")),
+                "score": r.get("score", 0.0)} for r in rows]
     return {"event": format_event(query=q), "action": "search",
             "query": q, "results": results}
 

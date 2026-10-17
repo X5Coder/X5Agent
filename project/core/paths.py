@@ -234,8 +234,8 @@ def read_vector_json(filename: str, default: object) -> object:
 # Files migrated one-time from legacy storage into Data (never overwrites Data).
 _MIGRATE_DB_FILES = [
     "conversation.json", "todos.json", "scheduler.json", "triggers.json",
-    "user_memory.json", "agent_memory.json", "image_memory.json",
-    "important_memory.json", "plugin_state.json", "model_providers.json",
+    "user_memory.json", "agent_memory.json", "facts_memory.json",
+    "agent_notes.json", "plugin_state.json", "model_providers.json",
     "video_analyze_jobs.json", "video_transcribe_jobs.json",
 ]
 _MIGRATE_VECTOR_FILES = [

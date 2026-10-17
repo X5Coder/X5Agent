@@ -142,10 +142,9 @@ def _build_isolated_context(job: dict) -> tuple[str, str]:
     now = datetime.now(timezone.utc).astimezone()
     env = f"[Environment]\n- DateTime: {now.strftime('%Y-%m-%d %H:%M:%S %Z')} (ISO: {now.isoformat()})\n- OS: {platform.system()} {platform.release()}\n- CWD: {Path.cwd()}"
     try:
-        import json
-        from core.paths import read_db_json as _rdb
-        imp = _rdb("important_memory.json", [])
-        mem_block = "[Important Memory]\n" + "\n".join([f"  - {x.get('key')}: {x.get('content')[:120]}" for x in imp[-5:]]) if imp else "[Memories: empty]"
+        from core.memory import service as _mem
+        facts = _mem.get_text(_mem.FACTS)
+        mem_block = "[Facts Memory]\n" + facts if facts.strip() else "[Memories: empty]"
     except Exception:
         mem_block = ""
     todo_block = ""

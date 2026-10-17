@@ -1,7 +1,11 @@
 {
-  "version": "0.64.0",
-  "description": "The live browser view is now reachable from anywhere through one gated port: the viewer link carries the session's own token, so a remote console opens the live page at http://<your-ip>:8790/ (the raw relay port stays closed, never exposed). Also: starting the browser reports success with a note when it is already running instead of a failed step, the boot splash lifts only after the cached data has painted, and the insecure-connection notice shows once per tab.",
+  "version": "0.66.0",
+  "description": "The memory system is rebuilt around exactly four memories: your profile (who you are), the agent's personality (sent every request as its identity so it becomes a copy of you), confirmed facts, and the agent's own private notes (the only memory it controls, through a new memory tool). The old image memory and important-notes memory are gone, memories refresh every 30 messages instead of 50, and any memory that grows past 1000 tokens is automatically compressed without losing information. Existing memory files are read and upgraded in place. In the same release, every embedding (tool search, trigger search, chat memory, document search, semantic text memory) moves out of JSON files into one local ChromaDB store under X5Agent/Data/vector/chroma, search history is no longer capped at 500 or 1000 entries, and the old vector files are imported automatically on first run.",
   "features": [
+    "All embeddings (tool search, trigger search, chat memory, document search, semantic text memory) now live in one local ChromaDB vector database under X5Agent/Data/vector/chroma, still inside Data so a full backup/restore carries them.",
+    "Search history is no longer capped: chat memory search, the semantic text memory and document indexing keep growing instead of silently dropping the oldest 500 or 1000 entries.",
+    "Existing installs upgrade themselves: the old JSON vector files are imported into the new database automatically on first run, and tool/trigger search still starts instantly offline from the shipped seeds.",
+    "Tool/trigger indexing is unchanged from your side: editing a tool description still re-embeds only that tool (per-spec fingerprints), and a fresh copy needs no embedding call when the descriptions are unchanged.",
     "Remote live browser view: the browser publishes one token-gated viewer port (8790 by default, X5_LIVE_VIEWER_PORT to change it) and the viewer link carries the session token, so the live page opens on your console address from any machine.",
     "The raw relay port (6080) stays loopback-only: the gate serves the library's own viewer page, proxies the stream and the noVNC assets, forces the mode from the token (a preview link can never become interactive), and answers Not Connect (410) to anything without a live token.",
     "The gate opens with the browser and closes with it, and the installer opens its port in the firewall next to the console port (best-effort, never fatal).",
@@ -210,6 +214,12 @@
     "The launcher's command-line check is stricter: a profile named like ours (…-profile-old) or a longer port (92230 vs 9223) is no longer mistaken for our browser.",
     "The agent's browser tool set is unchanged (no tools added or removed in 1.6.1).",
     "Tailscale registration no longer fails when its link expires: a fresh link is issued automatically while you register (up to 3 attempts), so setup never has to be re-run just because you were slow to open it.",
-    "Tailscale registration output is a single clean box with the link shown once; the noisy raw lines and the redundant 'no browser on this server' note are gone."
+    "Tailscale registration output is a single clean box with the link shown once; the noisy raw lines and the redundant 'no browser on this server' note are gone.",
+    "The memory system is now exactly four memories: your profile (who you are), the agent's personality, confirmed facts about you, and the agent's own private notes.",
+    "The agent personality memory is sent to the agent every request as its identity, so over time it learns your style, taste and way of working and becomes a copy of you.",
+    "New memory tool: the agent can read, write, edit or delete its own long-term notes by itself — the only memory it controls, and it is never sent automatically.",
+    "Facts memory absorbed the old important-notes memory, and the separate image memory is gone (images are ordinary Workspace files now).",
+    "Long-term memories are refreshed every 30 messages (was 50) and any memory that passes 1000 tokens is compressed automatically without losing information.",
+    "Old memories are kept: existing user and agent memory files are read and upgraded in place, so nothing is lost."
   ]
 }

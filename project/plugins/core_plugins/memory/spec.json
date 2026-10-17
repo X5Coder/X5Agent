@@ -1,0 +1,9 @@
+{
+  "name": "memory",
+  "description": "Your own permanent long-term memory. Use it to keep anything you must remember across sessions: user habits, decisions, ongoing context, and preferences. Read it, write new notes to it, edit (replace) it, or delete it. This memory is private to you and is NOT sent automatically, so call read whenever you need to recall it.",
+  "inputs": {
+    "action": {"type": "string", "enum": ["read", "write", "edit", "delete"], "required": true, "description": "read returns your memory; write appends new lines; edit replaces the whole memory with new text; delete clears it."},
+    "text": {"type": "string", "required": false, "description": "Text for write (append) or edit (replace). One fact per line is best."},
+    "reason": {"type": "string", "required": false, "description": "Why you call this tool (max 15 words, English)."}
+  }
+}

@@ -33,7 +33,7 @@ def _validate_k(k: Any) -> int:
 
 
 def _load_history() -> list[dict]:
-    # Conversation history: Data first (unified), legacy fallback. Bounded.
+    # Conversation history: Data first (unified), legacy fallback.
     project_root = Path(__file__).resolve().parents[3]
     candidates = []
     try:
@@ -51,7 +51,7 @@ def _load_history() -> list[dict]:
         try:
             data = json.loads(hist_path.read_text(encoding="utf-8"))
             if isinstance(data, list):
-                return data[:1000]  # bounded
+                return data
         except Exception:
             continue
     return []

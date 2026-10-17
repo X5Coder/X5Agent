@@ -1,8 +1,10 @@
 """Build prebuilt embedding seeds shipped with the project.
 
-Reads the runtime stores (X5Agent/Data/vector) and copies them as
-*.seed.json into project/storage/vector/ (committed, small JSON), so a
-fresh copy gets instant tool/trigger search when specs are unchanged.
+The runtime stores live in ChromaDB (X5Agent/Data/vector/chroma). This
+script snapshots them as *.seed.json into project/storage/vector/
+(committed, small JSON), so a fresh copy gets instant tool/trigger search
+when specs are unchanged (the store imports the seed into Chroma on first
+run).
 
 INCREMENTAL: the stores keep a per-spec fingerprint on every entry —
 ensure_* reuses stored embeddings whose fingerprint still matches and
@@ -40,31 +42,19 @@ def _load_store_module(relative: str, name: str):
     return mod
 
 
-def _snapshot_one(label: str, store_mod, live_name: str, seed_name: str) -> bool:
-    """Copy the runtime store to a seed after hash verification. No model load."""
-    from core.paths import data_vector_dir
-
-    src = data_vector_dir() / live_name
+def _write_seed(label: str, seed_name: str, snapshot: dict | None) -> bool:
+    """Write one seed JSON after a successful snapshot. No model load."""
     dst = PROJECT_ROOT / "storage" / "vector" / seed_name
-    if not src.exists():
-        print(f"[seed] SKIP (no runtime store): {live_name}")
+    if not isinstance(snapshot, dict) or not snapshot.get("count"):
+        print(f"[seed] SKIP {label}: runtime store is empty or stale - run without --snapshot-only")
         return False
     try:
-        specs = store_mod._collect_discoverable_specs() if hasattr(
-            store_mod, "_collect_discoverable_specs") else store_mod._collect_trigger_specs()
-        current_hash = store_mod._compute_hash(specs)
-        data = json.loads(src.read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or data.get("hash") != current_hash:
-            print(f"[seed] SKIP {label}: runtime hash is stale - run without --snapshot-only")
-            return False
-        data["model_id"] = "embedding-model"
-        data["model_path"] = "embedding_model"
         dst.parent.mkdir(parents=True, exist_ok=True)
         tmp = dst.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(dst)
         print(f"[seed] wrote storage/vector/{seed_name} "
-              f"({dst.stat().st_size / 1024:.0f} KB, {label}: {len(specs)})")
+              f"({dst.stat().st_size / 1024:.0f} KB, {label}: {len(snapshot.get('tools') or snapshot.get('triggers') or [])})")
         return True
     except Exception as e:
         print(f"[seed] SKIP {seed_name}: {e}", file=sys.stderr)
@@ -77,10 +67,12 @@ def main(argv: list[str]) -> int:
         "plugins/trigger-discovery/search/store.py", "seed_trigger_store")
 
     if "--snapshot-only" in argv:
-        ok_tools = _snapshot_one(
-            "tools", tool_store, "tool_embeddings.json", "tool_embeddings.seed.json")
-        ok_triggers = _snapshot_one(
-            "triggers", trigger_store, "trigger_embeddings.json", "trigger_embeddings.seed.json")
+        # Instant: import any shipped seed into Chroma (never embeds), then snapshot.
+        tool_store.ensure_embeddings(auto_create=False)
+        trigger_store.ensure_embeddings(auto_create=False)
+        ok_tools = _write_seed("tools", "tool_embeddings.seed.json", tool_store.snapshot_seed())
+        ok_triggers = _write_seed(
+            "triggers", "trigger_embeddings.seed.json", trigger_store.snapshot_seed())
         if not (ok_tools and ok_triggers):
             print("[seed] ERROR: seeds not written", file=sys.stderr)
             return 1
@@ -103,31 +95,11 @@ def main(argv: list[str]) -> int:
     triggers = trigger_store.ensure_embeddings(auto_create=True)
     print(f"[seed] runtime stores ready: {len(tools)} tools, {len(triggers)} triggers")
 
-    from core.paths import data_vector_dir
-
     built = 0
-    for live_name, seed_name in (
-        ("tool_embeddings.json", "tool_embeddings.seed.json"),
-        ("trigger_embeddings.json", "trigger_embeddings.seed.json"),
-    ):
-        src = data_vector_dir() / live_name
-        dst = PROJECT_ROOT / "storage" / "vector" / seed_name
-        if not src.exists():
-            print(f"[seed] SKIP (no runtime store): {live_name}")
-            continue
-        try:
-            data = json.loads(src.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                data["model_id"] = "embedding-model"
-                data["model_path"] = "embedding_model"
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            tmp = dst.with_suffix(".tmp")
-            tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-            tmp.replace(dst)
-            print(f"[seed] wrote storage/vector/{seed_name} ({dst.stat().st_size / 1024:.0f} KB)")
-            built += 1
-        except Exception as e:
-            print(f"[seed] SKIP {seed_name}: {e}", file=sys.stderr)
+    if _write_seed("tools", "tool_embeddings.seed.json", tool_store.snapshot_seed()):
+        built += 1
+    if _write_seed("triggers", "trigger_embeddings.seed.json", trigger_store.snapshot_seed()):
+        built += 1
     if not built:
         print("[seed] ERROR: no seeds written", file=sys.stderr)
         return 1

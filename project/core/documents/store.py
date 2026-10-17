@@ -8,27 +8,31 @@ each chunk, and answer semantic chunk queries per file.
 Ownership:
   - Source files live ONLY in X5Agent/Workspace (the model device).
     file_id is the Workspace-relative path, e.g. "report.pdf".
-  - Chunk embeddings live in X5Agent/Data/vector/document_embeddings.json
-    (writes ALWAYS Data, same rule as every other vector store).
+  - Chunk embeddings live in X5Agent/Data/vector/chroma
+    (collections "document_chunks" + "document_files"; writes ALWAYS Data,
+    same rule as every other vector store).
   - When a Workspace file is deleted, its embeddings are deleted too:
     every search/ensure checks existence first, and purge_missing()
     removes all orphans (called best-effort from workspace list,
     server workspace APIs, and the context builder).
 
 Limits (bounded, never unbounded):
-  - max file size 10MB, max 2000 chunks per file,
+  - max file size 100MB, max 2000 chunks per file,
   - max 20 vision-enhanced PDF pages per file, vision pool of 4 workers.
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+
+_COLLECTION = "document_chunks"
+_FILES_COLLECTION = "document_files"
+_PROJECT = Path(__file__).resolve().parents[2]
 
 # Files MarkItDown converts locally without any cloud key.
 # Office + PDF + plain data formats (mirrors `pip install "markitdown[all]"`).
@@ -50,6 +54,18 @@ MAX_CHUNKS = 2000
 MAX_VISION_PAGES = 20
 VISION_WORKERS = 4
 THIN_PAGE_CHARS = 50
+
+# The file registry is never similarity-queried (existence/hash lookups only),
+# so every record shares one constant placeholder vector.
+_REGISTRY_VECTOR = [1.0, 0.0]
+
+
+def _vb():
+    import sys as _sys
+    if str(_PROJECT) not in _sys.path:
+        _sys.path.insert(0, str(_PROJECT))
+    from core.embedding import vector_db
+    return vector_db
 
 
 def is_supported(filename: str) -> bool:
@@ -81,43 +97,64 @@ def normalize_file_id(file_id: Any) -> str:
 def _workspace_file(file_id: str) -> Path:
     """Resolve a validated file_id strictly inside Workspace."""
     import sys as _sys
-    proj = Path(__file__).resolve().parents[2]
-    if str(proj) not in _sys.path:
-        _sys.path.insert(0, str(proj))
+    if str(_PROJECT) not in _sys.path:
+        _sys.path.insert(0, str(_PROJECT))
     from core.paths import resolve_inside_workspace
     return resolve_inside_workspace(file_id)
 
 
-def _store_path() -> Path:
+def _clean_id(file_id: Any) -> str:
     try:
-        import sys as _sys
-        proj = Path(__file__).resolve().parents[2]
-        if str(proj) not in _sys.path:
-            _sys.path.insert(0, str(proj))
-        from core.paths import data_vector_file
-        return data_vector_file("document_embeddings.json")
+        return file_id.strip().replace("\\", "/") if isinstance(file_id, str) else ""
     except Exception:
-        return Path(__file__).resolve().parents[2] / "storage" / "vector" / "document_embeddings.json"
+        return ""
 
 
-def _load_registry() -> dict:
+def _file_entry(fid: str) -> dict | None:
     try:
-        p = _store_path()
-        if p.exists():
-            data = json.loads(p.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and isinstance(data.get("files"), dict):
-                return data
+        got = _vb().get_ids(_FILES_COLLECTION, [fid])
+        if not got["ids"]:
+            return None
+        meta = got["metadatas"][0] or {}
+        return {
+            "hash": meta.get("hash", ""),
+            "size": int(meta.get("size", 0) or 0),
+            "chunk_count": int(meta.get("chunk_count", 0) or 0),
+            "updated_at": meta.get("updated_at", ""),
+        }
+    except Exception:
+        return None
+
+
+def _all_file_entries() -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    try:
+        got = _vb().all_records(_FILES_COLLECTION)
+        for rid, meta in zip(got["ids"], got["metadatas"]):
+            meta = meta or {}
+            out[rid] = {
+                "hash": meta.get("hash", ""),
+                "size": int(meta.get("size", 0) or 0),
+                "chunk_count": int(meta.get("chunk_count", 0) or 0),
+                "updated_at": meta.get("updated_at", ""),
+            }
     except Exception:
         pass
-    return {"files": {}}
+    return out
 
 
-def _save_registry(data: dict) -> None:
-    p = _store_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(p)
+def _delete_chunks(fid: str) -> None:
+    try:
+        _vb().delete(_COLLECTION, where={"file_id": fid})
+    except Exception:
+        pass
+
+
+def _delete_file_entry(fid: str) -> None:
+    try:
+        _vb().delete(_FILES_COLLECTION, ids=[fid])
+    except Exception:
+        pass
 
 
 def chunk_markdown(text: str, words: int = CHUNK_WORDS) -> list[str]:
@@ -169,9 +206,8 @@ def _vision_transcribe(image_path: Path) -> str:
     """Run the fixed extraction prompt on one page image. Empty on failure."""
     try:
         import sys as _sys
-        proj = Path(__file__).resolve().parents[2]
-        if str(proj) not in _sys.path:
-            _sys.path.insert(0, str(proj))
+        if str(_PROJECT) not in _sys.path:
+            _sys.path.insert(0, str(_PROJECT))
         from core.ai_models.media import image_to_base64
         from core.ai_models.store import get_model
         from core.ai_models.engine import analyze
@@ -251,18 +287,14 @@ def convert_to_markdown(path: Path) -> str:
 
 def delete_file_embeddings(file_id: str) -> bool:
     """Delete every embedding chunk of one file. Returns True if removed."""
-    try:
-        fid = file_id.strip().replace("\\", "/") if isinstance(file_id, str) else ""
-    except Exception:
-        return False
+    fid = _clean_id(file_id)
     if not fid:
         return False
-    data = _load_registry()
-    if fid not in data["files"]:
+    if _file_entry(fid) is None:
         return False
     try:
-        del data["files"][fid]
-        _save_registry(data)
+        _delete_chunks(fid)
+        _delete_file_entry(fid)
         return True
     except Exception:
         return False
@@ -271,11 +303,11 @@ def delete_file_embeddings(file_id: str) -> bool:
 def purge_missing() -> int:
     """Delete embeddings whose Workspace file no longer exists. Never raises."""
     try:
-        data = _load_registry()
-        if not data["files"]:
+        entries = _all_file_entries()
+        if not entries:
             return 0
         gone = []
-        for fid in list(data["files"]):
+        for fid in entries:
             try:
                 if not _workspace_file(fid).is_file():
                     gone.append(fid)
@@ -283,11 +315,10 @@ def purge_missing() -> int:
                 gone.append(fid)
         for fid in gone:
             try:
-                del data["files"][fid]
+                _delete_chunks(fid)
+                _delete_file_entry(fid)
             except Exception:
                 continue
-        if gone:
-            _save_registry(data)
         return len(gone)
     except Exception:
         return 0
@@ -307,9 +338,8 @@ def ensure_indexed(file_id: str) -> dict:
         raise FileNotFoundError(f"Document not found in Workspace: {fid}")
     blob = path.read_bytes()
     digest = hashlib.sha256(blob).hexdigest()
-    data = _load_registry()
-    entry = data["files"].get(fid)
-    if isinstance(entry, dict) and entry.get("hash") == digest and entry.get("chunks"):
+    entry = _file_entry(fid)
+    if isinstance(entry, dict) and entry.get("hash") == digest and entry.get("chunk_count"):
         return _public_meta(fid, entry)
     markdown = convert_to_markdown(path)
     chunks = chunk_markdown(markdown)
@@ -317,31 +347,33 @@ def ensure_indexed(file_id: str) -> dict:
         raise ValueError(f"No readable text in {fid}")
     try:
         import sys as _sys
-        proj = Path(__file__).resolve().parents[2]
-        if str(proj) not in _sys.path:
-            _sys.path.insert(0, str(proj))
+        if str(_PROJECT) not in _sys.path:
+            _sys.path.insert(0, str(_PROJECT))
         from core.embedding.service import embed_texts
         vectors = embed_texts(chunks)
     except FileNotFoundError as e:
         raise FileNotFoundError(str(e)) from e
-    stored = [{"index": i, "text": c, "embedding": v}
-              for i, (c, v) in enumerate(zip(chunks, vectors))]
-    data["files"][fid] = {
-        "hash": digest,
-        "size": len(blob),
-        "chunks": stored,
-        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    }
-    _save_registry(data)
-    return _public_meta(fid, data["files"][fid])
+    updated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    vb = _vb()
+    _delete_chunks(fid)
+    _delete_file_entry(fid)
+    ids = [f"{fid}::{i}" for i in range(len(chunks))]
+    metas = [{"file_id": fid, "index": i, "file_hash": digest,
+              "file_size": len(blob), "chunk_count": len(chunks),
+              "updated_at": updated_at} for i in range(len(chunks))]
+    vb.upsert(_COLLECTION, ids, vectors, chunks, metas)
+    vb.upsert(_FILES_COLLECTION, [fid], [_REGISTRY_VECTOR], [fid],
+              [{"hash": digest, "size": len(blob),
+                "chunk_count": len(chunks), "updated_at": updated_at}])
+    return _public_meta(fid, {"size": len(blob), "chunk_count": len(chunks),
+                              "updated_at": updated_at})
 
 
 def _public_meta(fid: str, entry: dict) -> dict:
-    chunks = entry.get("chunks") if isinstance(entry, dict) else []
     return {
         "file_id": fid,
         "size": entry.get("size", 0),
-        "chunk_count": len(chunks) if isinstance(chunks, list) else 0,
+        "chunk_count": int(entry.get("chunk_count", 0) or 0),
         "updated_at": entry.get("updated_at", ""),
     }
 
@@ -355,9 +387,8 @@ def list_documents() -> list[dict]:
     out: list[dict] = []
     try:
         import sys as _sys
-        proj = Path(__file__).resolve().parents[2]
-        if str(proj) not in _sys.path:
-            _sys.path.insert(0, str(proj))
+        if str(_PROJECT) not in _sys.path:
+            _sys.path.insert(0, str(_PROJECT))
         from core.paths import workspace_root
         ws = workspace_root()
         if not ws.is_dir():
@@ -371,10 +402,10 @@ def list_documents() -> list[dict]:
                 continue
             if len(found) >= 100:
                 break
-        indexed = _load_registry().get("files", {})
+        indexed = _all_file_entries()
         for fid in found[:100]:
             entry = indexed.get(fid)
-            if isinstance(entry, dict) and entry.get("chunks"):
+            if isinstance(entry, dict) and entry.get("chunk_count"):
                 out.append({**_public_meta(fid, entry), "indexed": True})
             else:
                 try:
@@ -401,29 +432,21 @@ def search(file_id: str, query: str, top_k: int = 3) -> dict:
     if top_k < 1 or top_k > 20:
         raise ValueError("top_k must be 1..20")
     meta = ensure_indexed(fid)
-    entry = _load_registry()["files"][fid]
     try:
         import sys as _sys
-        proj = Path(__file__).resolve().parents[2]
-        if str(proj) not in _sys.path:
-            _sys.path.insert(0, str(proj))
+        if str(_PROJECT) not in _sys.path:
+            _sys.path.insert(0, str(_PROJECT))
         from core.embedding.service import embed_query
-        import numpy as _np
-        q_vec = _np.array(embed_query(q), dtype=_np.float32)
-        scored = []
-        for c in entry["chunks"]:
-            try:
-                score = float(_np.dot(q_vec, _np.array(c["embedding"], dtype=_np.float32)))
-            except Exception:
-                continue
-            scored.append((score, c))
-        scored.sort(reverse=True, key=lambda x: x[0])
-        picked = scored[:top_k]
+        rows = _vb().query(_COLLECTION, embed_query(q), top_k, where={"file_id": fid})
     except FileNotFoundError:
         raise
     except Exception as e:
         raise RuntimeError(f"Document search failed for {fid}: {e}") from e
-    results = [{"index": c["index"], "text": c["text"], "score": round(s, 4)}
-               for s, c in picked]
+    results = []
+    for r in rows:
+        md = r.get("metadata") or {}
+        results.append({"index": int(md.get("index", 0) or 0),
+                        "text": r.get("document", ""),
+                        "score": r.get("score", 0.0)})
     return {"file_id": fid, "query": q, "top_k": top_k,
             "chunk_count": meta["chunk_count"], "results": results}

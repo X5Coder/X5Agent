@@ -1,6 +1,6 @@
 {
   "name": "embedding_memory",
-  "description": "A semantic text memory that stores one text as a local embedding chunk and retrieves the most similar chunks for a query sentence. Provide text to store, or query to retrieve stored chunks only. Bounded (500 entries), persistent across restarts.",
+  "description": "A semantic text memory that stores one text as a local embedding chunk and retrieves the most similar chunks for a query sentence. Provide text to store, or query to retrieve stored chunks only. Persistent across restarts.",
   "inputs": {
     "reason": {
       "type": "string",

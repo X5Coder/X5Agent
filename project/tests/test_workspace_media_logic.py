@@ -46,19 +46,17 @@ def test_workspace_api_entries_carry_stable_ids():
 
 
 def test_upload_mirror_keeps_original_name():
-    from core.memory.image_memory.service import delete_image
-
     h = _handler()
     data_url = "data:image/png;base64," + base64.b64encode(_PNG).decode("ascii")
     name = f"{_unique_tag()}_logo.png"
-    saved, mirrors, image_ids = [], [], []
+    saved, mirrors = [], []
     try:
         kind, saved_path, ref, iid = DashboardHandler._save_chat_attachment(
             h, {"type": "image", "name": name, "data": data_url})
         assert kind == "image"
         saved.append(Path(str(saved_path)))
         assert f'file_id="{name}"' in ref, ref
-        assert f'image_id="{iid}"' in ref, ref
+        assert iid == name, ref
         mirrors.append(workspace_root() / name)
         assert (workspace_root() / name).is_file()
         # Same name again -> same content, suffixed stable id (never overwrite).
@@ -69,9 +67,9 @@ def test_upload_mirror_keeps_original_name():
         import re as _re2
         fid2 = _re2.search(r'file_id="([^"]+)"', ref2).group(1)
         assert fid2.startswith(name.split(".")[0] + "_") and fid2.endswith(".png"), ref2
+        assert iid2 == fid2, ref2
         mirrors.append(workspace_root() / fid2)
         assert (workspace_root() / fid2).is_file()
-        image_ids += [iid, iid2]
     finally:
         for p in saved:
             try:
@@ -81,11 +79,6 @@ def test_upload_mirror_keeps_original_name():
         for p in mirrors:
             try:
                 p.unlink(missing_ok=True)
-            except Exception:
-                pass
-        for iid in image_ids:
-            try:
-                delete_image(iid)
             except Exception:
                 pass
 
@@ -109,12 +102,10 @@ def test_at_mention_injects_real_file_id():
 
 
 def test_upload_sent_as_workspace_id_plus_message_metadata():
-    from core.memory.image_memory.service import delete_image
-
     h = _handler()
     data_url = "data:image/png;base64," + base64.b64encode(_PNG).decode("ascii")
     name = f"{_unique_tag()}_shot.png"
-    saved, iid, fid = [], None, None
+    saved, fid = [], None
     try:
         loop_input, saved_paths = DashboardHandler._build_loop_input(
             h, {"message": "what is in this?",
@@ -125,13 +116,11 @@ def test_upload_sent_as_workspace_id_plus_message_metadata():
         assert m, loop_input
         fid = m.group(1)
         assert (workspace_root() / fid).is_file()
-        # Message metadata carries size + type + both ids.
-        assert "image_id=" in loop_input and "file_id=" in loop_input
+        # Message metadata carries size + type + the Workspace file id.
+        assert "file_id=" in loop_input
         assert "what is in this?" in loop_input
         # Priority block points at the same Workspace id.
         assert f'file_id="{fid}"' in loop_input
-        m2 = _re.search(r'image_id="([^"]+)"', loop_input)
-        iid = m2.group(1) if m2 else None
     finally:
         for p in saved:
             try:
@@ -141,11 +130,6 @@ def test_upload_sent_as_workspace_id_plus_message_metadata():
         if fid:
             try:
                 (workspace_root() / fid).unlink(missing_ok=True)
-            except Exception:
-                pass
-        if iid:
-            try:
-                delete_image(iid)
             except Exception:
                 pass
 
@@ -236,12 +220,10 @@ def test_at_mention_injects_id_plus_path_in_place():
 
 
 def test_upload_lines_use_full_metadata_shape():
-    from core.memory.image_memory.service import delete_image
-
     h = _handler()
     data_url = "data:image/png;base64," + base64.b64encode(_PNG).decode("ascii")
     name = f"{_unique_tag()}_full.png"
-    saved, iid, fid = [], None, None
+    saved, fid = [], None
     try:
         loop_input, saved_paths = DashboardHandler._build_loop_input(
             h, {"message": "here",
@@ -254,8 +236,6 @@ def test_upload_lines_use_full_metadata_shape():
         fid = m.group(1)
         assert "path: " in loop_input and "type: png" in loop_input
         assert ("size: %d bytes" % len(_PNG)) in loop_input
-        m2 = _re.search(r'image_id="([^"]+)"', loop_input)
-        iid = m2.group(1) if m2 else None
     finally:
         for p in saved:
             try:
@@ -265,11 +245,6 @@ def test_upload_lines_use_full_metadata_shape():
         if fid:
             try:
                 (workspace_root() / fid).unlink(missing_ok=True)
-            except Exception:
-                pass
-        if iid:
-            try:
-                delete_image(iid)
             except Exception:
                 pass
 
@@ -401,42 +376,23 @@ def test_gateway_mirror_keeps_original_name():
 
 
 def test_gateway_image_hint_full_shape():
-    import re as _re
-    from core.memory.image_memory.service import delete_image, get_image
     from gateway.dispatch import _convert_part
 
     name = f"{_unique_tag()}_gwlook.png"
-    data_p, iid = None, None
     try:
         text, hint = _convert_part({"kind": "image", "text": "شوف دي",
                                     "blob": _PNG, "name": name, "mime": "image/png"})
         assert text == "شوف دي"
-        assert ('file_id="' + name + '"') in hint and "image_id=" in hint
+        assert ('file_id="' + name + '"') in hint
         assert "path: " in hint and "type: png" in hint
         assert ("size: %d bytes" % len(_PNG)) in hint
         assert "analyze it first" in hint
         assert (workspace_root() / name).is_file()
-        m = _re.search(r'image_id="([^"]+)"', hint)
-        iid = m.group(1) if m else None
-        if iid:
-            entry = get_image(iid) or {}
-            if entry.get("path"):
-                data_p = Path(str(entry["path"]))
     finally:
-        if data_p is not None:
-            try:
-                data_p.unlink(missing_ok=True)
-            except Exception:
-                pass
         try:
             (workspace_root() / name).unlink(missing_ok=True)
         except Exception:
             pass
-        if iid:
-            try:
-                delete_image(iid)
-            except Exception:
-                pass
 
 
 def test_gateway_document_hint_full_shape():
@@ -495,33 +451,30 @@ def test_documents_block_uses_full_metadata_shape():
             pass
 
 
-def test_image_memory_line_uses_full_metadata_shape(monkeypatch):
+def test_memories_block_sends_user_then_facts(monkeypatch):
     import core.agent.context.builder as b
+    from core.memory import service
 
-    def fake_load(filename, default):
-        if filename == "image_memory.json":
-            return [{"image_id": "abc12345", "name": "pic.png",
-                     "path": "C:\\ws\\pic.png", "size": 70, "type": "png",
-                     "width": 1, "height": 1, "vision_text": "a cat",
-                     "is_persistent": True}]
-        return default
-
-    monkeypatch.setattr(b, "_load_db_json", fake_load)
+    monkeypatch.setattr(b, "_memory_text",
+                        lambda kind: {"user": "- name: TESTUSER",
+                                      "facts": "- likes: tea"}.get(kind, ""))
     monkeypatch.setattr(b, "_embedding_memory_block", lambda: "")
     block = b._memories_block()
-    assert 'path="C:/w' in block and "size: 70 bytes" in block, block
+    assert "TESTUSER" in block and "likes: tea" in block, block
+    # User profile first, facts second.
+    assert block.index("User memory") < block.index("Facts memory"), block
+    assert service.USER in ("user", "agent", "facts", "notes")
 
 
 def test_all_emitted_paths_are_full_html_usable_links():
     import re as _re
-    from core.memory.image_memory.service import delete_image
     from core.agent.context.builder import _workspace_block
 
     h = _handler()
     tag = _unique_tag()
     sub = workspace_root() / tag
     sub.mkdir(parents=True, exist_ok=True)
-    saved, iid, fid = [], None, None
+    saved, fid = [], None
     try:
         (sub / "art.png").write_bytes(_PNG)
         rel = f"{tag}/art.png"
@@ -534,8 +487,6 @@ def test_all_emitted_paths_are_full_html_usable_links():
         saved += [Path(str(p)) for p in saved_paths]
         m = _re.search(r'file_id="([^"]+)"', loop_input)
         fid = m.group(1) if m else None
-        m2 = _re.search(r'image_id="([^"]+)"', loop_input)
-        iid = m2.group(1) if m2 else None
         corps = _workspace_block() + "\n" + loop_input
         paths = _re.findall(r'path: "([^"]+)"', corps)
         assert len(paths) >= 3, corps
@@ -551,11 +502,6 @@ def test_all_emitted_paths_are_full_html_usable_links():
         if fid:
             try:
                 (workspace_root() / fid).unlink(missing_ok=True)
-            except Exception:
-                pass
-        if iid:
-            try:
-                delete_image(iid)
             except Exception:
                 pass
         shutil.rmtree(str(sub), ignore_errors=True)

@@ -1,9 +1,14 @@
 """
 Embedding store for discoverable tools.
-Responsibility: maintain embeddings for tool descriptions, auto-create on startup, detect changes and rebuild.
-Uses the bundled embedding model via core/embedding/service.py (offline).
-Ships with a prebuilt seed (tool_embeddings.seed.json) so a fresh copy
-works instantly when tool specs are unchanged - no embedding needed.
+
+Responsibility: maintain embeddings for tool descriptions in ChromaDB
+(X5Agent/Data/vector/chroma), auto-create on startup, and rebuild only the
+specs that changed. Uses the bundled embedding model via
+core/embedding/service.py (offline).
+
+A prebuilt seed (tool_embeddings.seed.json, committed JSON) is imported on a
+fresh copy when specs are unchanged, so no embedding call is needed the first
+time. The runtime store itself is Chroma, never JSON.
 """
 from __future__ import annotations
 
@@ -12,34 +17,43 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any
 
-def _resolve_store_path() -> Path:
-    # Unified: embeddings live in X5Agent/Data/vector (inside zip backup).
-    try:
-        import sys as _sys
-        _proj = Path(__file__).resolve().parents[3]
-        if str(_proj) not in _sys.path:
-            _sys.path.insert(0, str(_proj))
-        from core.paths import data_vector_file
-        return data_vector_file("tool_embeddings.json")
-    except Exception:
-        return Path(__file__).resolve().parents[3] / "storage" / "vector" / "tool_embeddings.json"
+_COLLECTION = "tools"
+_PROJECT = Path(__file__).resolve().parents[3]
 
 
-STORE_PATH = _resolve_store_path()
-_STORE_LEGACY = Path(__file__).resolve().parents[3] / "storage" / "vector" / "tool_embeddings.json"
+def _vb():
+    import sys as _sys
+    if str(_PROJECT) not in _sys.path:
+        _sys.path.insert(0, str(_PROJECT))
+    from core.embedding import vector_db
+    return vector_db
+
+
 # Prebuilt seed shipped with the project (committed, small JSON). Used when
-# the runtime store is missing and specs are unchanged - instant, offline.
+# the runtime Chroma collection is empty and specs are unchanged - instant, offline.
 _SEED_CANDIDATES = (
-    Path(__file__).resolve().parents[3] / "storage" / "vector" / "tool_embeddings.seed.json",
+    _PROJECT / "storage" / "vector" / "tool_embeddings.seed.json",
     Path(__file__).resolve().parent / "tool_embeddings.seed.json",
 )
-# Also keep hash file separately for quick check? Stored inside JSON.
+
+
+def _legacy_json_candidates() -> tuple[Path, ...]:
+    """Old JSON runtime store (migrated into Chroma on first run)."""
+    out = [Path(__file__).resolve().parents[3] / "storage" / "vector" / "tool_embeddings.json"]
+    try:
+        import sys as _sys
+        if str(_PROJECT) not in _sys.path:
+            _sys.path.insert(0, str(_PROJECT))
+        from core.paths import data_vector_dir
+        out.insert(0, data_vector_dir() / "tool_embeddings.json")
+    except Exception:
+        pass
+    return tuple(out)
 
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    return _PROJECT
 
 
 def _collect_discoverable_specs() -> list[dict]:
@@ -55,30 +69,23 @@ def _collect_discoverable_specs() -> list[dict]:
     # main agent via tool_search.
     _SESSION_ONLY = {"studio_page", "studio_read"}
 
-    # Known discoverable plugin locations (explicit per user request)
-    # We scan all plugins subdirectories that contain spec.json
     if plugins_root.exists():
         for category in plugins_root.iterdir():
             if not category.is_dir():
                 continue
-            # tool-discovery/search itself is not a discoverable tool, skip
             if category.name == "tool-discovery":
                 continue
             for tool_dir in category.iterdir():
                 if not tool_dir.is_dir():
                     continue
-                # skill_create is CORE now (in-context), never discoverable
                 if tool_dir.name == "skill_create":
                     continue
-                # studio session tools are session-only (studio
-                # branch sessions), never discoverable in the main agent
                 if tool_dir.name in _SESSION_ONLY:
                     continue
                 spec_path = tool_dir / "spec.json"
                 if spec_path.exists():
                     try:
                         spec = json.loads(spec_path.read_text(encoding="utf-8"))
-                        # Validate spec has name and description
                         if not isinstance(spec.get("name"), str) or not isinstance(spec.get("description"), str):
                             continue
                         tools.append(spec)
@@ -97,7 +104,6 @@ def _collect_discoverable_specs() -> list[dict]:
         except Exception:
             pass
     # Browser discoverable tools (project/X5Browser, single versioned folder).
-    # Appended here so tool_search embeds them and the hash auto-rebuilds on change.
     try:
         import sys as _sys2
         _root2 = _project_root()
@@ -148,79 +154,96 @@ def _spec_fingerprint(name: str, description: str) -> str:
         return ""
 
 
-def _load_store() -> dict | None:
-    for cand in (STORE_PATH, _STORE_LEGACY):
-        if not cand.exists():
-            continue
+def _read_records() -> list[dict]:
+    """Every stored tool record (with embeddings) back from Chroma."""
+    got = _vb().all_records(_COLLECTION)
+    out: list[dict] = []
+    for rid, emb, meta in zip(got["ids"], got["embeddings"], got["metadatas"]):
+        meta = meta or {}
+        spec: dict = {}
         try:
-            data = json.loads(cand.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                return data
+            spec = json.loads(meta.get("spec_json") or "{}")
+            if not isinstance(spec, dict):
+                spec = {}
         except Exception:
-            continue
-    return None
+            spec = {}
+        out.append({
+            "name": meta.get("name") or rid,
+            "description": meta.get("description") or "",
+            "spec": spec,
+            "embedding": emb,
+            "fingerprint": meta.get("fingerprint") or "",
+        })
+    return out
 
 
-def _load_seed(current_hash: str) -> dict | None:
-    """Return the shipped seed when its hash matches current specs. Never raises."""
-    for cand in _SEED_CANDIDATES:
+def _write_all(hash_val: str, records: list[dict]) -> None:
+    """Replace the whole collection with these records (clears removed specs)."""
+    vb = _vb()
+    vb.drop(_COLLECTION)
+    ids = [str(r.get("name", "")) for r in records]
+    embs = [r.get("embedding") or [] for r in records]
+    docs = [f"{r.get('name','')} : {r.get('description','')}"[:2000] for r in records]
+    metas = [{
+        "name": str(r.get("name", "")),
+        "description": str(r.get("description", ""))[:8000],
+        "spec_json": json.dumps(r.get("spec") or {}, ensure_ascii=False),
+        "fingerprint": str(r.get("fingerprint", "")),
+    } for r in records]
+    vb.upsert(_COLLECTION, ids, embs, docs, metas)
+    vb.update_meta(_COLLECTION, {
+        "hash": hash_val,
+        "model_id": "embedding-model",
+        "model_path": "embedding_model",
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "count": len(records),
+    })
+
+
+def _load_json_store(candidates, key: str, current_hash: str) -> list[dict] | None:
+    """Read one JSON store that matches the current hash. Never raises."""
+    for cand in candidates:
         try:
             if not cand.exists():
                 continue
             data = json.loads(cand.read_text(encoding="utf-8"))
             if (isinstance(data, dict) and data.get("hash") == current_hash
-                    and isinstance(data.get("tools"), list) and data["tools"]):
-                first = data["tools"][0]
-                if isinstance(first.get("embedding"), list) and len(first["embedding"]) > 0:
-                    return data
+                    and isinstance(data.get(key), list) and data[key]):
+                first = data[key][0]
+                if isinstance(first.get("embedding"), list) and first["embedding"]:
+                    return data[key]
         except Exception:
             continue
     return None
-
-
-def _save_store(hash_val: str, tools_with_embeddings: list[dict]) -> None:
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    data = {
-        "hash": hash_val,
-        "model_id": "embedding-model",
-        "model_path": "embedding_model",
-        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "tools": tools_with_embeddings,
-        "count": len(tools_with_embeddings),
-    }
-    # Write atomically
-    tmp = STORE_PATH.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(STORE_PATH)
 
 
 # Single-flight rebuild guard (file-based, NOT a memory lock).
 # tool_search re-execs this file on every call, so each call gets fresh
 # module globals: a threading.Lock here would never coordinate across calls.
 # The guard file serializes concurrent rebuilds across threads, processes,
-# and fresh module loads. Losers wait bounded for the winner's fresh store
-# instead of encoding all texts a second time on CPU.
-_REBUILD_GUARD_NAME = "tool_embeddings.rebuilding"
+# and fresh module loads.
+_REBUILD_GUARD_NAME = "tools.rebuilding"
 _REBUILD_GUARD_STALE_SECONDS = 300
 _REBUILD_WAIT_SECONDS = 180
 
 
 def _rebuild_guard_path() -> Path:
-    return STORE_PATH.parent / _REBUILD_GUARD_NAME
+    d = _vb().store_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    return d / _REBUILD_GUARD_NAME
 
 
-def _stored_is_fresh(stored: dict | None, current_hash: str) -> bool:
-    if not isinstance(stored, dict) or stored.get("hash") != current_hash:
+def _stored_is_fresh(current_hash: str) -> bool:
+    vb = _vb()
+    try:
+        if vb.count(_COLLECTION) == 0:
+            return False
+        return vb.get_meta(_COLLECTION).get("hash") == current_hash
+    except Exception:
         return False
-    tools = stored.get("tools")
-    if not isinstance(tools, list) or not tools:
-        return False
-    first = tools[0]
-    return isinstance(first.get("embedding"), list) and len(first["embedding"]) > 0
 
 
 def _rebuild_claimed_by_other() -> bool:
-    """True when another call/process is actively rebuilding (stale guard ignored)."""
     try:
         guard = _rebuild_guard_path()
         if not guard.exists():
@@ -241,10 +264,9 @@ def _rebuild_claimed_by_other() -> bool:
 
 
 def _claim_rebuild() -> bool:
-    """Atomically claim the rebuild right. True when this call won."""
     try:
-        STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(str(_rebuild_guard_path()), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        path = _rebuild_guard_path()
+        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         try:
             os.write(fd, str(os.getpid()).encode("utf-8"))
         except Exception:
@@ -269,132 +291,74 @@ def _release_rebuild() -> None:
 
 def ensure_embeddings(auto_create: bool = True) -> list[dict]:
     """
-    Ensure embeddings exist and are up-to-date.
-    - Collects current specs
-    - Computes hash
-    - If store exists and hash matches, return stored tools
-    - Else delete old embeddings, create new via embedding model, save, return
-    Called automatically on startup (tool_search first use or main.py)
+    Ensure the Chroma tool collection exists and matches current specs.
+    Uses the shipped seed / legacy JSON first (no model), otherwise embeds
+    only new/changed specs via the bundled model. Returns the records.
     """
     tools = _collect_discoverable_specs()
     if not tools:
-        # No discoverable tools yet - return empty but still handle
         return []
 
     current_hash = _compute_hash(tools)
-    stored = _load_store()
+    vb = _vb()
 
-    if stored is not None and stored.get("hash") == current_hash and stored.get("tools"):
-        # Check that embeddings are present and valid length
-        # Validate first entry has embedding
-        first = stored["tools"][0]
-        if isinstance(first.get("embedding"), list) and len(first["embedding"]) > 0:
-            # One-time migration: stamp per-spec fingerprints on vectors the
-            # global hash already verified — no re-embedding, so the NEXT
-            # change is incremental from the start. Never raises outward.
+    if vb.count(_COLLECTION) > 0 and vb.get_meta(_COLLECTION).get("hash") == current_hash:
+        return _read_records()
+
+    if vb.count(_COLLECTION) == 0:
+        records = (_load_json_store(_legacy_json_candidates(), "tools", current_hash)
+                   or _load_json_store(_SEED_CANDIDATES, "tools", current_hash))
+        if records is not None:
             try:
-                cur_fp = {t.get("name", ""): _spec_fingerprint(t.get("name", ""), t.get("description", ""))
-                          for t in tools}
-                touched = False
-                for entry in stored["tools"]:
-                    try:
-                        if not entry.get("fingerprint"):
-                            fp = cur_fp.get(entry.get("name", ""))
-                            if fp:
-                                entry["fingerprint"] = fp
-                                touched = True
-                    except Exception:
-                        continue
-                if touched:
-                    _save_store(current_hash, stored["tools"])
+                _write_all(current_hash, records)
+                print(f"[tool-discovery] Loaded prebuilt tool embeddings "
+                      f"({len(records)} tools, hash {current_hash[:8]})")
             except Exception:
                 pass
-            return stored["tools"]
-
-    # Fresh copy: use the shipped prebuilt seed when specs are unchanged
-    # (instant, fully offline - no embedding model call needed).
-    if stored is None:
-        seed = _load_seed(current_hash)
-        if seed is not None:
-            try:
-                _save_store(current_hash, seed["tools"])
-            except Exception:
-                pass
-            print(f"[tool-discovery] Prebuilt tool embeddings loaded ({len(seed['tools'])} tools, hash {current_hash[:8]})")
-            return seed["tools"]
+            return _read_records()
 
     # Slow rebuild path is single-flight (file guard): the fast hash check
-    # above stays unblocked, losers wait bounded for the winner's fresh
-    # store instead of encoding all texts again on CPU.
+    # stays unblocked, losers wait bounded for the winner's fresh store.
     if _rebuild_claimed_by_other():
         deadline = time.time() + _REBUILD_WAIT_SECONDS
         while time.time() < deadline:
             time.sleep(2)
-            if _stored_is_fresh(_load_store(), current_hash):
-                return _load_store()["tools"]
-        # Timed out (owner may be dead): fall through and rebuild anyway.
+            if _stored_is_fresh(current_hash):
+                return _read_records()
     won = _claim_rebuild()
-    if not won:
-        # Lost the race after waiting: one last re-check before rebuilding.
-        stored = _load_store()
-        if _stored_is_fresh(stored, current_hash):
-            return stored["tools"]  # type: ignore[return-value]
+    if not won and _stored_is_fresh(current_hash):
+        return _read_records()
     try:
-        stored = _load_store()
-        if _stored_is_fresh(stored, current_hash):
-            return stored["tools"]  # type: ignore[return-value]
-        # Hash mismatch or no store - rebuild
-        if stored is not None and stored.get("hash") != current_hash:
-            # Delete old embeddings: remove file (will be overwritten)
-            try:
-                STORE_PATH.unlink(missing_ok=True)
-            except Exception:
-                pass
-            print(f"[tool-discovery] Descriptions changed (old {stored.get('hash','')[:8]} -> new {current_hash[:8]}), rebuilding embeddings...")
-
+        if _stored_is_fresh(current_hash):
+            return _read_records()
         if not auto_create:
             return []
+        if vb.count(_COLLECTION) > 0:
+            print(f"[tool-discovery] Descriptions changed "
+                  f"({vb.get_meta(_COLLECTION).get('hash', '')[:8]} -> {current_hash[:8]}), rebuilding...")
 
-        # Prepare texts: description is the primary semantic signal, combine name + description for better retrieval
-        texts = []
-        fingerprints = []
-        for t in tools:
-            # Use description verbatim as requested, but also include name for better matching
-            txt = f"{t.get('name','')} : {t.get('description','')}"
-            texts.append(txt[:2000])
-            fingerprints.append(_spec_fingerprint(t.get("name", ""), t.get("description", "")))
+        texts = [f"{t.get('name','')} : {t.get('description','')}"[:2000] for t in tools]
+        fingerprints = [_spec_fingerprint(t.get("name", ""), t.get("description", "")) for t in tools]
 
-        # Incremental rebuild: reuse stored embeddings whose fingerprint is
-        # unchanged — only new/changed specs hit the model. Removed specs
-        # drop out naturally (we iterate current specs only).
-        old_by_name: dict[str, dict] = {}
-        if isinstance(stored, dict) and isinstance(stored.get("tools"), list):
-            for entry in stored["tools"]:
-                try:
-                    if (isinstance(entry.get("name"), str)
-                            and isinstance(entry.get("embedding"), list)
-                            and entry["embedding"]):
-                        old_by_name[entry["name"]] = entry
-                except Exception:
-                    continue
+        old_by_name = {r["name"]: r for r in _read_records() if r.get("embedding")}
         final_emb: list = [None] * len(tools)
         reused = 0
         for i, t in enumerate(tools):
             old = old_by_name.get(t.get("name", ""))
             if (old is not None and old.get("fingerprint") == fingerprints[i]
-                    and isinstance(old.get("embedding"), list)):
+                    and isinstance(old.get("embedding"), list) and old["embedding"]):
                 final_emb[i] = old["embedding"]
                 reused += 1
 
         def _embed_some(indexes: list[int]) -> None:
-            # Embed one batch in place. Needs the model — imported lazily so
-            # a fully-reused update never touches it. Never returns half-done.
             try:
                 from core.embedding.service import embed_texts, is_ready
             except Exception as e:
                 raise RuntimeError(f"Embedding service not available: {e}") from e
             if not is_ready():
-                raise FileNotFoundError("Embedding model folder is missing (project/embedding_model/). Copy it with the project and restart.")
+                raise FileNotFoundError(
+                    "Embedding model folder is missing (project/embedding_model/). "
+                    "Copy it with the project and restart.")
             got = embed_texts([texts[i] for i in indexes], normalize=True,
                               progress_label="tool-discovery")
             if len(got) != len(indexes):
@@ -404,11 +368,7 @@ def ensure_embeddings(auto_create: bool = True) -> list[dict]:
 
         need = [i for i, e in enumerate(final_emb) if e is None]
         if need:
-            # Embed with bounded retries inside service (chunked progress lines
-            # so a long first-time CPU encode never looks hung).
             _embed_some(need)
-        # Dimension guard: reused vectors must match the fresh dimension
-        # (model swap) — mismatched ones are re-embedded, never mixed.
         dim = next((len(e) for e in final_emb if isinstance(e, list) and e), 0)
         bad = [i for i, e in enumerate(final_emb)
                if not isinstance(e, list) or len(e) != dim or dim == 0]
@@ -420,21 +380,18 @@ def ensure_embeddings(auto_create: bool = True) -> list[dict]:
         if bad:
             raise RuntimeError(f"Embedding rebuild left {len(bad)} tools without vectors")
 
-        tools_with_emb = []
-        for spec, emb, fp in zip(tools, final_emb, fingerprints):
-            tools_with_emb.append({
-                "name": spec["name"],
-                "description": spec["description"],
-                "spec": spec,
-                "embedding": emb,
-                "fingerprint": fp,
-            })
+        records = [{
+            "name": spec["name"],
+            "description": spec["description"],
+            "spec": spec,
+            "embedding": emb,
+            "fingerprint": fp,
+        } for spec, emb, fp in zip(tools, final_emb, fingerprints)]
 
-        _save_store(current_hash, tools_with_emb)
+        _write_all(current_hash, records)
         print(f"[tool-discovery] Incremental update: reused {reused}, "
-              f"embedded {len(tools_with_emb) - reused} of {len(tools_with_emb)} tools, "
-              f"hash {current_hash[:8]}")
-        return tools_with_emb
+              f"embedded {len(records) - reused} of {len(records)} tools, hash {current_hash[:8]}")
+        return records
     finally:
         if won:
             _release_rebuild()
@@ -446,9 +403,7 @@ def get_embeddings() -> list[dict]:
 
 
 def search(query: str, top_k: int = 5) -> list[dict]:
-    """
-    Semantic search over discoverable tools using embedding cosine similarity.
-    """
+    """Semantic search over discoverable tools using Chroma cosine similarity."""
     if not isinstance(query, str) or not query.strip():
         raise ValueError("query must be non-empty string")
     if len(query) > 2000:
@@ -456,37 +411,53 @@ def search(query: str, top_k: int = 5) -> list[dict]:
     if not isinstance(top_k, int) or top_k < 1 or top_k > 20:
         top_k = 5
 
-    tools = ensure_embeddings(auto_create=True)
-    if not tools:
+    ensure_embeddings(auto_create=True)
+    vb = _vb()
+    if vb.count(_COLLECTION) == 0:
         return []
 
     from core.embedding.service import embed_query
-    import numpy as np
-
-    q_emb = np.array(embed_query(query), dtype=np.float32)
-    scored = []
-    for t in tools:
-        emb = np.array(t["embedding"], dtype=np.float32)
-        score = float(np.dot(q_emb, emb))  # cosine since normalized
-        scored.append((score, t))
-    scored.sort(reverse=True, key=lambda x: x[0])
+    rows = vb.query(_COLLECTION, embed_query(query), top_k)
     results = []
-    for score, t in scored[:top_k]:
-        # Only return if reasonably relevant? But return top_k always for now
+    for r in rows:
+        md = r.get("metadata") or {}
+        try:
+            spec = json.loads(md.get("spec_json") or "{}")
+            if not isinstance(spec, dict):
+                spec = {}
+        except Exception:
+            spec = {}
         results.append({
-            "name": t["name"],
-            "description": t["description"],
-            "spec": t["spec"],
-            "score": round(score, 4),
+            "name": md.get("name", ""),
+            "description": md.get("description", ""),
+            "spec": spec,
+            "score": r.get("score", 0.0),
         })
     return results
 
 
+def snapshot_seed() -> dict | None:
+    """Seed dict (committable JSON) for the current runtime store, or None if
+    the runtime collection is empty / out of date (run ensure first)."""
+    tools = _collect_discoverable_specs()
+    if not tools:
+        return None
+    current_hash = _compute_hash(tools)
+    vb = _vb()
+    if vb.count(_COLLECTION) == 0 or vb.get_meta(_COLLECTION).get("hash") != current_hash:
+        return None
+    records = _read_records()
+    return {
+        "hash": current_hash,
+        "model_id": "embedding-model",
+        "model_path": "embedding_model",
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "tools": records,
+        "count": len(records),
+    }
+
+
 def force_rebuild() -> list[dict]:
-    """Force delete and rebuild_embeddings (used when user changes descriptions manually)."""
-    if STORE_PATH.exists():
-        try:
-            STORE_PATH.unlink()
-        except Exception:
-            pass
+    """Force delete and rebuild embeddings (used when descriptions change manually)."""
+    _vb().drop(_COLLECTION)
     return ensure_embeddings(auto_create=True)

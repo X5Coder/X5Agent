@@ -278,39 +278,42 @@ def _embedding_memory_block() -> str:
             "chunks you may search or store via that tool.")
 
 
+def _memory_text(kind: str) -> str:
+    # Read one internal memory as bullet text via the single owner
+    # (core.memory.service). Never raises.
+    try:
+        import sys as _sys
+        _proj = Path(__file__).resolve().parents[3]
+        if str(_proj) not in _sys.path:
+            _sys.path.insert(0, str(_proj))
+        from core.memory import service
+        return service.get_text(kind)
+    except Exception:
+        return ""
+
+
+def _agent_personality_block() -> str:
+    # The agent personality memory travels in the SYSTEM prompt (its identity),
+    # right after L1-L3, because the user wants the agent to become an exact
+    # copy of him. Hidden (empty) until the memory has content.
+    txt = _memory_text("agent")
+    if not txt.strip():
+        return ""
+    return ("[Agent personality memory - your identity: think, speak and decide exactly "
+            "the way the user does.]\n" + txt)
+
+
 def _memories_block() -> str:
-    # L5: all memories (user/agent/image-persistent/important). Chat last30 is L6 separate.
+    # L5: user profile (first) + facts (second) + the embedding count line.
+    # The agent personality memory is NOT here: it lives in the system prompt.
+    # The agent-owned notes memory is never sent automatically (tool only).
     parts: list[str] = []
-    # user_memory
-    um = _load_db_json("user_memory.json", {})
-    if isinstance(um, dict) and um:
-        lines = [f"  - {k}: {v.get('value') if isinstance(v, dict) else str(v)[:200]}" for k, v in list(um.items())[-20:]]
-        parts.append("[User Memory - L5]\n" + "\n".join(lines))
-    # agent_memory
-    am = _load_db_json("agent_memory.json", {})
-    if isinstance(am, dict) and am:
-        lines = [f"  - {k}: {v.get('value') if isinstance(v, dict) else str(v)[:200]}" for k, v in list(am.items())[-20:]]
-        parts.append("[Agent Memory - L5]\n" + "\n".join(lines))
-    # image_memory - only persistent with vision_text and all persistent
-    im = _load_db_json("image_memory.json", [])
-    if isinstance(im, list) and im:
-        persistent = [x for x in im if x.get("is_persistent")]
-        if persistent:
-            lines = []
-            for x in persistent[-10:]:
-                vt = x.get("vision_text") or ""
-                _sz = x.get("size")
-                _sz_txt = f", size: {_sz} bytes" if isinstance(_sz, int) else ""
-                _ip = str(x.get("path") or "").replace("\\", "/")
-                lines.append(f"  - {x.get('image_id')}: {x.get('name')} ({x.get('type')}{_sz_txt}, {x.get('width')}x{x.get('height')}) path=\"{_ip}\" vision='{vt[:120]}'")
-            parts.append("[Image Memory - persistent, sent every request - L5]\n" + "\n".join(lines))
-            # also show with vision count
-    # important_memory
-    imp = _load_db_json("important_memory.json", [])
-    if isinstance(imp, list) and imp:
-        lines = [f"  - {x.get('id')}: [{x.get('key') or 'note'}] {x.get('content','')[:150]}" for x in imp[-20:]]
-        parts.append("[Important Memory - L5]\n" + "\n".join(lines))
-    # embedding_memory: single fixed English line with count, hidden when empty
+    user_txt = _memory_text("user")
+    if user_txt.strip():
+        parts.append("[User memory - who the user is - L5]\n" + user_txt)
+    facts_txt = _memory_text("facts")
+    if facts_txt.strip():
+        parts.append("[Facts memory - confirmed facts about the user - L5]\n" + facts_txt)
     emb_block = _embedding_memory_block()
     if emb_block:
         parts.append(emb_block)
@@ -653,7 +656,7 @@ def build_context(user_input: str, include_todo: bool = True, isolated: bool = F
     8-layer context order (fixed):
       L1 core_identity.md + L2 general_mission.md + L3 policy.md -> system role
       L4 system_info (time + Workspace path + jail) -> user content
-      L5 memories (user/agent/image-persistent/important) -> user content
+      L5 memories (user profile + facts) -> user content (agent personality rides in the system prompt)
       L6 chat last-N + todo + triggers (explicit, never merged into L5) -> user content
       L7 available core tools list -> user content
       L8 current user input (ALWAYS last) -> user content
@@ -699,6 +702,10 @@ def build_context(user_input: str, include_todo: bool = True, isolated: bool = F
             "[Bridge] Based on the studio task below, execute it.\n\n"
             f"[Current User Input - L8]\n{user_input.strip()}"])
         return system_prompt, _s_ctx, _studio_core_tools()
+    # Agent personality memory -> SYSTEM prompt (identity), right after L1-L3.
+    personality = _agent_personality_block()
+    if personality:
+        system_prompt = system_prompt + "\n\n" + personality
     # L4
     env = _env_block()
     ws_block = _workspace_block()

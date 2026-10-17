@@ -1138,20 +1138,6 @@ def _persist_conversation(user_input: str, assistant_output: str, steps: list | 
         if isinstance(resume_units, list) and resume_units:
             assistant_msg["resume_units"] = resume_units
     data.append(assistant_msg)
-    if len(data) > 1000:
-        removed = data[:-1000]
-        data = data[-1000:]
-        try:
-            from core.agent.memory.chat_vector_store import _load_vectors as _lv, _save_vectors as _sv
-            _vecs = _lv()
-            _rids = {str(m.get("id") or "").strip() for m in removed if isinstance(m, dict) and m.get("id")}
-            _rids.discard("")
-            if _rids:
-                for _rid in _rids:
-                    _vecs.pop(_rid, None)
-                _sv(_vecs)
-        except Exception:
-            pass
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     # Auto-create embeddings for new messages (per-message, no fallback).
     # Reused user id: embed the assistant reply only (user already embedded).
@@ -1312,13 +1298,7 @@ def _outgoing_messages(seed: list, units: list, limit: int = _UNIT_LIMIT) -> lis
 
 
 def _clear_temp_images_if_any():
-    try:
-        from core.memory.image_memory.service import clear_temp
-        n = clear_temp()
-        if n:
-            print(f"[loop] cleared {n} temp images at loop end")
-    except Exception:
-        pass
+    # Images are no longer tracked by a store: nothing to clear here.
     # Video is saved locally so its path can be sent as metadata, then deleted after analysis or loop end
     try:
         # Clean any remaining temp videos in Data/files/videos + legacy (including pending jobs)
@@ -1955,11 +1935,11 @@ def run_loop(
         except Exception:
             pass
 
-        # Auto memory every 50 messages — main chat only, never branch sessions.
+        # Auto memory every 30 messages — main chat only, never branch sessions.
         if not session_key:
             try:
                 from core.memory.auto_memory import maybe_trigger_auto_memory
-                maybe_trigger_auto_memory(api_key=api_key)
+                maybe_trigger_auto_memory()
             except Exception:
                 pass
 

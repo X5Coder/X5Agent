@@ -125,18 +125,6 @@ def resolve_image(image_id: str | None = None, image_path: str | None = None) ->
                     return _checked(cand, IMAGE_EXTS, MAX_IMAGE_BYTES, "Image")
             except (ValueError, OSError):
                 continue
-    # Fall back to the stored path of the image_memory entry.
-    try:
-        import sys as _sys
-        if str(_project_root()) not in _sys.path:
-            _sys.path.insert(0, str(_project_root()))
-        from core.memory.image_memory.service import get_image
-        entry = get_image(image_id)
-        entry_path = (entry or {}).get("path") if isinstance(entry, dict) else None
-        if entry_path and Path(entry_path).exists():
-            return _checked(Path(entry_path), IMAGE_EXTS, MAX_IMAGE_BYTES, "Image")
-    except Exception:
-        pass
     raise FileNotFoundError(f"Image id not found: {image_id}")
 
 

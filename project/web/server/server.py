@@ -371,13 +371,31 @@ def _safe_json_load(path: Path, default):
 def _data_json(filename: str, default):
     # Unified reads: X5Agent/Data first (zip backup), legacy project/storage fallback.
     try:
-        from core.paths import read_db_json, read_vector_json
-        if filename in ("tool_embeddings.json", "chat_embeddings.json", "trigger_embeddings.json"):
-            return read_vector_json(filename, default)
+        from core.paths import read_db_json
         return read_db_json(filename, default)
     except Exception:
         pass
     return default
+
+
+def _discoverable_tool_count() -> int:
+    """Discoverable tool count from the vector store. Never embeds or rebuilds:
+    the runtime collection is authoritative, the shipped JSON seed is the
+    pre-first-run fallback."""
+    try:
+        from core.embedding import vector_db
+        n = vector_db.count("tools")
+        if n:
+            return n
+    except Exception:
+        pass
+    try:
+        legacy = _safe_json_load(PROJECT_ROOT / "storage" / "vector" / "tool_embeddings.json", {})
+        if isinstance(legacy, dict) and isinstance(legacy.get("tools"), list):
+            return len(legacy["tools"])
+    except Exception:
+        pass
+    return 0
 
 
 def _run_failure_payload(err: BaseException) -> dict:
@@ -406,32 +424,29 @@ def _run_failure_payload(err: BaseException) -> dict:
 def _get_dashboard_data() -> dict:
     """Collect real dashboard stats from storage — no secrets."""
     storage_db = PROJECT_ROOT / "storage" / "database"
-    storage_vec = PROJECT_ROOT / "storage" / "vector"
 
     conversation = _data_json("conversation.json", _safe_json_load(storage_db / "conversation.json", []))
     todos = _data_json("todos.json", _safe_json_load(storage_db / "todos.json", []))
     scheduler = _data_json("scheduler.json", _safe_json_load(storage_db / "scheduler.json", []))
-    # memories
-    user_mem = _data_json("user_memory.json", _safe_json_load(storage_db / "user_memory.json", {}))
-    agent_mem = _data_json("agent_memory.json", _safe_json_load(storage_db / "agent_memory.json", {}))
-    image_mem = _data_json("image_memory.json", _safe_json_load(storage_db / "image_memory.json", {}))
-    important_mem = _data_json("important_memory.json", _safe_json_load(storage_db / "important_memory.json", {}))
+    # memories: the four memories are bullet text owned by core.memory.service
+    try:
+        from core.memory import service as _mem
+        user_txt = _mem.get_text(_mem.USER)
+        agent_txt = _mem.get_text(_mem.AGENT)
+        facts_txt = _mem.get_text(_mem.FACTS)
+        notes_txt = _mem.get_text(_mem.NOTES)
+    except Exception:
+        user_txt = agent_txt = facts_txt = notes_txt = ""
 
-    tool_emb = _data_json("tool_embeddings.json", _safe_json_load(storage_vec / "tool_embeddings.json", {}))
-    tools_count = 0
-    if isinstance(tool_emb, dict) and "tools" in tool_emb and isinstance(tool_emb["tools"], list):
-        tools_count = len(tool_emb["tools"])
+    tools_count = _discoverable_tool_count()
 
     # counts — bounded & validated
     def _len(v):
+        if isinstance(v, str):
+            return len([ln for ln in v.splitlines() if ln.strip()])
         if isinstance(v, list):
             return len(v)
         if isinstance(v, dict):
-            # image_memory / important_memory may be dict with list inside
-            if "images" in v and isinstance(v["images"], list):
-                return len(v["images"])
-            if "facts" in v and isinstance(v["facts"], list):
-                return len(v["facts"])
             return len(v)
         return 0
 
@@ -460,10 +475,10 @@ def _get_dashboard_data() -> dict:
         "todos": _len(todos),
         "jobs": _len(scheduler),
         "tools": tools_count,
-        "user_memory": _len(user_mem),
-        "agent_memory": _len(agent_mem),
-        "images": _len(image_mem),
-        "important": _len(important_mem),
+        "user_memory": _len(user_txt),
+        "agent_memory": _len(agent_txt),
+        "facts_memory": _len(facts_txt),
+        "notes_memory": _len(notes_txt),
         "last_activity": last_activity,
         "status": "operational",
         "uptime": uptime_str,
@@ -491,8 +506,6 @@ def _get_plugins_data() -> dict:
     switch; single-permission tools list one row bound to the plugin switch.
     """
     display = {
-        "image_memory": {"title": "Image Memory", "version": "v1.2.0", "user_desc": "Save and manage images with vision analysis.", "icon": "IM"},
-        "important_memory": {"title": "Important Memory", "version": "v1.0.0", "user_desc": "Save important facts and notes for long-term memory.", "icon": "IM"},
         "read_file": {"title": "Read File", "version": "v1.1.0", "user_desc": "Read files safely with path validation.", "icon": "RF"},
         "write_file": {"title": "Write File", "version": "v1.1.0", "user_desc": "Create files with path validation.", "icon": "WF"},
         "search_files": {"title": "Search Files", "version": "v1.0.0", "user_desc": "Find files by name and content.", "icon": "SF"},
@@ -4452,18 +4465,17 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             return kind, saved, ref, file_id
 
         if kind == "image":
-            # Temp entry so the loop resolves it via image_id; auto-cleared at loop end
-            from core.memory.image_memory.service import store_image
-
-            entry = store_image(name=safe_display, path=str(saved), is_persistent=False, is_temp=True)
+            # The Workspace copy is the image's identity (its file_id): the
+            # loop resolves it via vision_analyze(image_path=...) and it stays
+            # listed in Workspace. No separate image store anymore.
             ws_file = _mirror_workspace(blob)
             if ws_file:
                 _abs = _ws_abs(ws_file) or ws_file
-                ref = (f"- image: name=\"{safe_display}\" image_id=\"{entry['image_id']}\" file_id=\"{ws_file}\""
+                ref = (f"- image: name=\"{safe_display}\" file_id=\"{ws_file}\""
                        f" | path: \"{_abs}\" | type: {ext} | size: {len(blob)} bytes")
             else:
-                ref = f"- image: name=\"{safe_display}\" image_id=\"{entry['image_id']}\""
-            return kind, saved, ref, entry["image_id"]
+                ref = f"- image: name=\"{safe_display}\" path: \"{saved}\""
+            return kind, saved, ref, (ws_file or safe_display)
         elif kind == "video":
             ws_file = _mirror_workspace(blob)
             if ws_file:
@@ -5131,7 +5143,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         deleted by anything: not by chat regenerate/edit/prune, and not by
         this full Delete-chat-history either — every studio (Data/studios/pdf_*
         + branch sessions) always survives. Use Backup before clearing if the
-        chat itself matters. Saved memories (user/agent/image/important),
+        chat itself matters. Saved memories (user/agent/facts/notes),
         Workspace, and all other Data are never touched either.
         (studios_removed/sessions_removed stay in the response as 0 for
         backward compatibility with older consoles.)
@@ -5139,19 +5151,15 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         try:
             if str(PROJECT_ROOT) not in sys.path:
                 sys.path.insert(0, str(PROJECT_ROOT))
-            from core.paths import data_vector_file, read_db_json, write_db_json
+            from core.paths import read_db_json, write_db_json
             conv = read_db_json("conversation.json", [])
             removed = len(conv) if isinstance(conv, list) else 0
             write_db_json("conversation.json", [])
             try:
-                data_vector_file("chat_embeddings.json").write_text(
-                    json.dumps({}, ensure_ascii=False), encoding="utf-8")
+                from core.agent.memory import chat_vector_store as cvs
+                cvs.clear_all()
             except Exception:
-                try:
-                    from core.agent.memory import chat_vector_store as cvs
-                    cvs.clear_all()
-                except Exception:
-                    pass
+                pass
             self._send_json({"ok": True, "removed": removed,
                              "studios_removed": 0,
                              "sessions_removed": 0})

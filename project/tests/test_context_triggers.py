@@ -43,7 +43,8 @@ def test_execution_context_isolated_composition():
         skill, isolated=True, session_history="[branch] TEST prior run")
     assert system_prompt and len(system_prompt) > 100  # normal L1-L3 system prompt
     assert "[System Info - L4]" in user_content  # environment
-    assert ("[User Memory - L5]" in user_content or "[Memories L5: empty]" in user_content)
+    assert ("[User memory" in user_content or "[Facts memory" in user_content
+            or "[Memories L5: empty]" in user_content)
     assert "[Available CORE tools L7:" in user_content  # same tools layer
     assert "[Current User Input - L8]" in user_content
     assert "TEST-SKILL-EXECUTE-THIS-TASK" in user_content.split("[Current User Input - L8]")[1]

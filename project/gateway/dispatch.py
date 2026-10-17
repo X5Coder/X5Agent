@@ -264,25 +264,25 @@ def _convert_part(part: dict) -> tuple[str, str]:
         return (f"[voice message]: {heard}" if heard else "[voice message — could not transcribe]"), ""
     if kind == "image":
         ext = "png" if "png" in mime else "webp" if "webp" in mime else "jpg"
+        # The Workspace mirror IS the image's home and identity (file_id).
+        # The Data copy is only a fallback when the mirror fails, so no
+        # orphan files accumulate on disk.
         try:
+            ws_file = _mirror_workspace(blob, name)
+            if ws_file:
+                _abs = _ws_full_path(ws_file) or ws_file
+                hint = (f'- image: name="{name}" file_id="{ws_file}"'
+                        f' | path: "{_abs}" | type: {ext} | size: {len(blob)} bytes'
+                        f'\n- file_id="{ws_file}": image above, analyze it first (also in Workspace)')
+                return text, hint
             from core.paths import data_subdir as _ds
 
             d = _ds("files", "images")
             d.mkdir(parents=True, exist_ok=True)
             p = d / f"gw_{uuid.uuid4().hex[:12]}.{ext}"
             p.write_bytes(blob)
-            from core.memory.image_memory.service import store_image
-
-            entry = store_image(name=name, path=str(p), is_persistent=False, is_temp=True)
-            iid = str(entry.get("image_id") or "")
-            ws_file = _mirror_workspace(blob, name)
-            if ws_file:
-                _abs = _ws_full_path(ws_file) or ws_file
-                hint = (f'- image: name="{name}" image_id="{iid}" file_id="{ws_file}"'
-                        f' | path: "{_abs}" | type: {ext} | size: {len(blob)} bytes'
-                        f'\n- file_id="{ws_file}": image above, analyze it first (also in Workspace)')
-            else:
-                hint = f'- image: name="{name}" image_id="{iid}"'
+            hint = (f'- image: name="{name}" path: "{p}"'
+                    f' | type: {ext} | size: {len(blob)} bytes')
             return text, hint
         except Exception:
             return text or "[image — could not save]", ""
