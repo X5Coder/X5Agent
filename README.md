@@ -18,9 +18,9 @@ Verify after update: open Settings → Updates (must show `0.16.0`) or check
 `updates.json` → `"version": "0.16.0". Then hard-refresh the console page
 (Ctrl+Shift+R) so the new `live-url.js`/`chat.js` take effect.
 
-**Requirements: Python 3.10+** (full browser support — `x5browser==1.6.1`
-runs on 3.10+, 3.12 recommended), TCP port **7777** (the installer opens it via `ufw`/`firewalld`
-automatically; else `sudo ufw allow 7777/tcp`).
+**Requirements: Python 3.10+** (full browser support — `x5browser==1.6.2`
+runs on 3.10+, 3.12 recommended), TCP port **7777** (the installer opens it, plus the gated live-viewer port 8790, via `ufw`/`firewalld`
+automatically; else `sudo ufw allow 7777/tcp && sudo ufw allow 8790/tcp`).
 
 **One command (Linux / Mac, fresh VPS)**
 

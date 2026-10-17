@@ -47,7 +47,7 @@ for needed in ("_live_snapshot", "_live_active", "_live_pause_entry",
 print("old server live_state/heal helpers removed OK")
 
 # ---- catalog surface (41 mirrored library tools + our show_preview = 42) ----
-# (library 1.6.0/1.6.1 ship 42 tools; its `image_search` is deliberately not
+# (library 1.6.0+ ship 42 tools; its `image_search` is deliberately not
 #  mirrored because the project's own image_search plugin owns that name)
 assert len(catalog.ALL_TOOLS) == 42, len(catalog.ALL_TOOLS)
 assert "browser_status" in catalog.ALL_TOOLS

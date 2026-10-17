@@ -4,7 +4,7 @@ Flow (exactly, nothing else):
   1. python install.py [--run] [--yes] [--email E --password P]
   2. environment check (python, CPU/GPU, disk, dependencies auto-installed
      via `pip install -e .` when missing; below 3.12 warns:
-     x5browser 1.6.1 runs on 3.10+, 3.12 recommended for full browser support)
+     x5browser 1.6.2 runs on 3.10+, 3.12 recommended for full browser support)
   3. project state check (missing / complete / has live data; latest version
      read from raw updates.json on GitHub — no releases needed)
   4. source-only update (git pull --ff-only: tracked code only,
@@ -53,7 +53,7 @@ REPO_URL = "https://github.com/X5Coder/X5Agent"
 UI_URL = "http://127.0.0.1:7777/"
 CONSOLE_PORT = 7777
 MIN_PYTHON = (3, 10)
-BROWSER_PYTHON = (3, 12)  # x5browser 1.6.1 floor is 3.10; 3.12 still recommended for full browser support
+BROWSER_PYTHON = (3, 12)  # x5browser 1.6.2 floor is 3.10; 3.12 still recommended for full browser support
 # Imported by the dependency check (fresh interpreter, never this process).
 REQUIRED_IMPORTS = ("sentence_transformers", "numpy")
 

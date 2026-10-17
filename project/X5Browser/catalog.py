@@ -8,7 +8,7 @@ All are CORE PLUGINS: always on, hidden from the UI, found via tool_search.
 In restricted mode the loop asks the user (via question) before running them;
 otherwise they run directly.
 
-Library 1.6.0/1.6.1 ship 42 tools (1.6.0 added `image_search`). That one tool is
+Library 1.6.0+ ship 42 tools (1.6.0 added `image_search`). That one tool is
 deliberately NOT mirrored here: the project's own `image_search` core plugin
 (plugins/core_plugins/image_search) already owns that exact name and behavior,
 and two tools under one name would collide in the tool registry/dispatcher.
