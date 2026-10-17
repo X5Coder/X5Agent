@@ -186,6 +186,52 @@ def test_asset_content_type_is_a_bare_media_type():
     assert lv._content_type(None) == "application/octet-stream"
 
 
+# -- library wiring --------------------------------------------------------
+
+
+def test_links_owner_mints_on_the_gate():
+    """The owner the service hands the library must mint gate-based links.
+
+    The library's agent API defaults to a token owner on the raw relay, so this
+    is the piece that moves the whole session (control, preview, human_control,
+    show_preview) onto the addressed viewer.
+    """
+    pytest.importorskip("x5browser", reason="library token owner under test")
+    owner = lv.links_owner()
+    assert owner is not None
+    owner.begin_session()
+    report = owner.report()
+    prefix = f"http://127.0.0.1:{lv.viewer_port()}/view?"
+    assert report["url"].startswith(prefix), report["url"]
+    assert report["preview_url"].startswith(prefix), report["preview_url"]
+    minted = lv.tokens({"control": report["url"], "preview": report["preview_url"]})
+    links = {"control": report["url"], "preview": report["preview_url"]}
+    assert lv.authorize(minted["control"], links) == "control"
+    assert lv.authorize(minted["preview"], links) == "preview"
+
+
+def test_service_keeps_the_library_default_while_the_gate_is_down(monkeypatch):
+    from X5Browser import service
+
+    monkeypatch.setattr(lv, "_runner", None)
+    monkeypatch.setattr(lv, "_port", 0)
+    # A failed gate must never leave the browser with dead links.
+    assert service._live_links_kwarg() == {}
+
+
+def test_service_hands_the_gate_owner_over(monkeypatch):
+    pytest.importorskip("x5browser", reason="library token owner under test")
+    from X5Browser import service
+
+    monkeypatch.setattr(lv, "is_started", lambda: True)
+    links = service._live_links_kwarg().get("links")
+    assert links is not None
+    links.begin_session()
+    assert links.report()["url"].startswith(
+        f"http://127.0.0.1:{lv.viewer_port()}/view?"
+    )
+
+
 # -- app surface -----------------------------------------------------------
 
 

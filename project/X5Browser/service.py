@@ -930,8 +930,11 @@ async def _get_browser_async(allow_boot: bool = True) -> Any:
                 adopt_config = _dc.replace(adopt_config, **adopt_kwargs)
             except Exception:
                 pass
-            adopted_browser = (X5Browser(config=adopt_config, stack=adopt_stack)
-                               if adopt_stack is not None else X5Browser(config=adopt_config))
+            adopted_browser = (X5Browser(config=adopt_config, stack=adopt_stack,
+                                         **_live_links_kwarg())
+                               if adopt_stack is not None
+                               else X5Browser(config=adopt_config,
+                                              **_live_links_kwarg()))
             try:
                 await adopted_browser.start()
             except Exception:
@@ -1003,7 +1006,9 @@ async def _get_browser_async(allow_boot: bool = True) -> Any:
             config = _dc.replace(config, **replace_kwargs)
         except Exception:
             pass
-        browser = X5Browser(config=config, stack=stack) if stack is not None else X5Browser(config=config)
+        browser = (X5Browser(config=config, stack=stack, **_live_links_kwarg())
+                   if stack is not None
+                   else X5Browser(config=config, **_live_links_kwarg()))
         try:
             await browser.start()
         except Exception:
@@ -1333,6 +1338,26 @@ async def _stop_live_viewer() -> bool:
         return await liveviewer.stop_async()
     except Exception:
         return False
+
+
+def _live_links_kwarg() -> dict:
+    """``{"links": <owner>}`` for the library constructor, or ``{}``.
+
+    The library's agent API otherwise builds a default token owner whose links
+    name the raw loopback relay (unauthenticated). Handing it the gate's owner
+    keeps the whole session — control, preview, human_control, show_preview —
+    on the addressed viewer. Empty while the gate is not really up, so a failed
+    gate never leaves the browser with dead links.
+    """
+    try:
+        from . import liveviewer
+
+        if not liveviewer.is_started():
+            return {}
+        owner = liveviewer.links_owner()
+        return {"links": owner} if owner is not None else {}
+    except Exception:
+        return {}
 
 
 def _empty_links() -> dict:

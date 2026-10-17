@@ -84,6 +84,23 @@ def publish_base() -> bool:
         return False
 
 
+def links_owner() -> Any:
+    """The library's token owner, minting its links on the gated port.
+
+    The agent-side library API falls back to a plain ``LiveLinks()`` whose base
+    is the raw loopback relay, so the base has to be handed over explicitly:
+    that path reads no environment variable (only the library's live-stack
+    owner does, which is why ``publish_base`` exists too). Returns None when the
+    library is unavailable, so callers keep the library's own default.
+    """
+    try:
+        from x5browser.live.links import LiveLinks
+
+        return LiveLinks(base_url=gate_base())
+    except Exception:
+        return None
+
+
 def is_started() -> bool:
     """True while the gate owns its port."""
     return _runner is not None
