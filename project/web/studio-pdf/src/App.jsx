@@ -1,7 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { transform } from '@babel/standalone';
-import { toPng } from 'html-to-image';
-import { jsPDF } from 'jspdf';
 
 /* Exact PDF Maker design, data-driven: every studio (pdf_1, pdf_2...) runs
    in this ONE shell. Approved page code RUNS live in the white page
@@ -26,13 +23,44 @@ function hashStr(v) {
   return 'h' + (h >>> 0).toString(36);
 }
 
+/* Heavy libraries load on demand, never with the shell: Babel standalone
+   (~2.8MB) and the export stack (html-to-image + jsPDF) used to be static
+   imports, so the browser downloaded and parsed all of it BEFORE the toolbar,
+   the composer or the canvas could paint — that is why the studio looked like
+   it opened seconds late. Now the chrome paints at once and a page box just
+   keeps its black loading template until the design compiler is really here. */
+let babelTransform = null;
+let babelPromise = null;
+function loadBabel() {
+  if (!babelPromise) {
+    babelPromise = import('@babel/standalone')
+      .then((m) => { babelTransform = m.transform; return m; })
+      // Drop the failed promise so a later call really retries.
+      .catch((e) => { babelPromise = null; throw e; });
+  }
+  return babelPromise;
+}
+
+let exportPromise = null;
+function loadExportLibs() {
+  if (!exportPromise) {
+    exportPromise = Promise.all([import('html-to-image'), import('jspdf')])
+      .then(([img, pdf]) => ({ toPng: img.toPng, jsPDF: pdf.jsPDF }))
+      .catch((e) => { exportPromise = null; throw e; });
+  }
+  return exportPromise;
+}
+
 /* Compile ONE approved component (React only, no imports) and run it.
    Classic runtime is forced so plain JSX becomes React.createElement, AND
    react/jsx-runtime is shimmed for any code path that still requires it
    (model-written import or automatic-runtime output) — like pdf motion's
    bundled runtime, a missing jsx-runtime must never blank the page. */
 function compileComponent(code) {
-  const out = transform(code, {
+  // Only reachable once the compiler is ready (page boxes stay on their
+  // loading template until then); a clear error beats a mysterious crash.
+  if (!babelTransform) throw new Error('Design compiler not loaded yet');
+  const out = babelTransform(code, {
     presets: [['react', { runtime: 'classic' }]],
     plugins: ['transform-modules-commonjs'],
     filename: 'page.jsx',
@@ -394,6 +422,11 @@ export default function App() {
   // server truth (old caches carry no flags) — every box stays pending/dark
   // meanwhile so the entry never flashes a white sheet before designs land.
   const [entered, setEntered] = useState(false);
+  // 'loading' | 'ready' | 'failed' for the lazily fetched design compiler
+  // (Babel standalone). A coded box keeps its black loading template until
+  // 'ready', so a design box is never painted empty while the compiler is
+  // still on its way.
+  const [babelState, setBabelState] = useState('loading');
   // Entry guard for the instant landing scroll below (no glide on open).
   const bootedRef = useRef(false);
   // Inline title rename (double-click the name): draft while editing.
@@ -704,6 +737,31 @@ export default function App() {
       return null;
     }
   }, [studioId, fetchCode, missing]);
+
+  /* The design compiler is fetched right away, in parallel with the first
+     load(), but never blocks the shell's first paint. Bounded retries (3);
+     if it truly cannot load, say so instead of spinning forever. */
+  useEffect(() => {
+    let alive = true;
+    let attempts = 0;
+    const tryLoad = () => {
+      attempts += 1;
+      loadBabel().then(() => {
+        if (alive) setBabelState('ready');
+      }).catch(() => {
+        if (!alive) return;
+        if (attempts < 3) {
+          setTimeout(tryLoad, 1500);
+        } else {
+          setBabelState('failed');
+          showToast('Design compiler failed to load — reload the page');
+        }
+      });
+    };
+    tryLoad();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* Entry: instant open — boxes stay dark-pending until this first truth
      lands, then meta + codes stream in behind them (never a white flash). */
@@ -1691,8 +1749,9 @@ export default function App() {
 
   /* Render ONE page to PNG, bounded: a hanging font host aborts instead of
      freezing the export. withFonts=false skips webfont embedding (system
-     fallback) for the retry pass. */
-  const renderPagePng = (node, w, h, bg, withFonts) => {
+     fallback) for the retry pass. toPng is handed in because the export stack
+     loads on demand (see loadExportLibs). */
+  const renderPagePng = (toPng, node, w, h, bg, withFonts) => {
     const ctl = new AbortController();
     expAbortRef.current = ctl;
     const timer = setTimeout(() => { try { ctl.abort(); } catch (_) {} }, RENDER_TIMEOUT_MS);
@@ -1737,6 +1796,10 @@ export default function App() {
       expCancelRef.current = false;
       setExpPct(0);
       setExpStep({ done: 0, total: nodes.length });
+      // Export-only libraries load here, with the overlay already up so the
+      // wait is visible; a failure is surfaced by the catch below.
+      const { toPng, jsPDF } = await loadExportLibs();
+      if (!alive()) return;
       let pdf = null;
       let skipped = 0;
       let degraded = 0; // pages rendered with system-font fallback
@@ -1750,14 +1813,14 @@ export default function App() {
         const bg = getComputedStyle(node).backgroundColor;
         let dataUrl = null;
         try {
-          dataUrl = await renderPagePng(node, w, h, bg, true);
+          dataUrl = await renderPagePng(toPng, node, w, h, bg, true);
         } catch (e1) {
           if (!alive()) return;
           // Webfont hosts unreachable (gstatic timeouts): retry WITHOUT
           // embedded fonts so the page still exports with system fonts
           // instead of killing the whole file.
           try {
-            dataUrl = await renderPagePng(node, w, h, bg, false);
+            dataUrl = await renderPagePng(toPng, node, w, h, bg, false);
             degraded += 1;
           } catch (e2) {
             skipped += 1;
@@ -1927,7 +1990,11 @@ export default function App() {
             const running = !!busyPages[n] || designingPages.indexOf(n) >= 0;
             // !entered covers the entry moment before the first load lands
             // (old caches carry no flags): dark box instead of a white sheet.
-            const pending = !code && (!entered || !!knownCoded[n] || running);
+            // A design that arrived before the compiler did keeps the very
+            // same black template, so the box is never painted empty.
+            const pending = !code
+              ? (!entered || !!knownCoded[n] || running)
+              : babelState !== 'ready';
             const leaving = !!leavingPages[n];
             return (
               <section className="feed-slide" key={i} style={{ paddingTop: 8, paddingBottom: agentH + 8 }}>

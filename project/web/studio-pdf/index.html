@@ -11,13 +11,12 @@
        silently and never delays or breaks the first paint. -->
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" crossorigin="anonymous" />
   <noscript><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" /></noscript>
-  <!-- First-paint cover (inline so it paints before the 2.8MB bundle even
-       parses): the dark studio look from byte zero, never a white sheet, and
-       no featureless frame either — the page area already shows the black
-       design box with the loading lights, exactly like the studio's own
-       pending box, so the real toolbar lands on an identical frame (no jump
-       and no blank template) whatever the bundle does. React replaces this
-       static placeholder on boot. -->
+  <!-- First-paint cover: paints from byte zero so opening a studio never shows
+       a white sheet while the shell bundle downloads and parses. It is exactly
+       the studio's own first frame — black toolbar strip, dark canvas, plain
+       black design box — and the studio's pending box continues it seamlessly
+       (the loading lights come in past its 250ms grace), so the real toolbar
+       and composer land on an identical frame with no flash and no jump. -->
   <style>
     html,body{margin:0;padding:0;height:100%;background:#1a1a1a}
     #root{min-height:100%;background:#1a1a1a}
@@ -26,19 +25,12 @@
     .first-canvas{flex:1;display:flex;align-items:center;justify-content:center;background:#1a1a1a}
     /* Same fitted page box the studio computes (width = min(availW, availH*w/h)
        with availH = viewport - 44 toolbar - 166 composer reserve). */
-    .fp-box{width:clamp(119px,min(calc(100vw - 32px),calc((100dvh - 210px) * 0.707)),100%);aspect-ratio:794/1123;background:#000;border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.45);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
-    .fp-dots{display:grid;grid-template-columns:repeat(5,14px);gap:8px}
-    .fp-dots span{width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,.18);animation:fp-ring 1.6s infinite}
-    .fp-dots span[data-ring="1"]{animation-delay:.3s}
-    .fp-dots span[data-ring="2"]{animation-delay:.6s}
-    .fp-word{font-size:15px;font-weight:600;letter-spacing:.04em;color:#eee;font-family:'Space Grotesk',system-ui,sans-serif}
-    @keyframes fp-ring{0%,100%{opacity:.2}50%{opacity:1}}
+    .fp-box{width:clamp(119px,min(calc(100vw - 32px),calc((100dvh - 210px) * 0.707)),100%);aspect-ratio:794/1123;background:#000;border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.45)}
     @media (max-width:640px){.fp-box{width:clamp(119px,min(calc(100vw - 20px),calc((100dvh - 210px) * 0.707)),100%)}}
-    @media (prefers-reduced-motion: reduce){.fp-dots span{animation:none}}
   </style>
 </head>
 <body>
-  <div id="root"><div class="first-paint" aria-hidden="true"><div class="first-bar"></div><div class="first-canvas"><div class="fp-box"><div class="fp-dots"><span data-ring="2"></span><span data-ring="2"></span><span data-ring="2"></span><span data-ring="2"></span><span data-ring="2"></span><span data-ring="2"></span><span data-ring="1"></span><span data-ring="1"></span><span data-ring="1"></span><span data-ring="2"></span><span data-ring="2"></span><span data-ring="1"></span><span data-ring="0"></span><span data-ring="1"></span><span data-ring="2"></span><span data-ring="2"></span><span data-ring="1"></span><span data-ring="1"></span><span data-ring="1"></span><span data-ring="2"></span><span data-ring="2"></span><span data-ring="2"></span><span data-ring="2"></span><span data-ring="2"></span><span data-ring="2"></span></div><div class="fp-word">Loading…</div></div></div></div></div>
+  <div id="root"><div class="first-paint" aria-hidden="true"><div class="first-bar"></div><div class="first-canvas"><div class="fp-box"></div></div></div></div>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>

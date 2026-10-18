@@ -1196,9 +1196,9 @@ def test_parallel_turns_per_page_same_slide_rejected():
 
 # ---- shell + asset transport ------------------------------------------------
 # The iframe loads /studio-pdf/shell/<id> (small HTML, always fresh) and the
-# content-hashed bundles under /studio-pdf/assets/* (2.8MB, cacheable forever).
+# content-hashed bundles under /studio-pdf/assets/* (cacheable forever).
 # That split is what makes the studio open instantly on every visit instead of
-# re-downloading the whole bundle again — and what keeps a new build's renamed
+# re-downloading the bundles again — and what keeps a new build's renamed
 # bundles from being served out of a stale cache.
 
 import socket  # noqa: E402

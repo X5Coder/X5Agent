@@ -2240,11 +2240,11 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     self.send_header("Content-Type", ctype + ("; charset=utf-8" if ctype.startswith("text/") or "javascript" in ctype else ""))
                     self.send_header("Content-Length", str(len(body)))
                     # Vite names every bundle by its content hash
-                    # (index-DqE1lNPs.js), so an asset URI can never change
+                    # (index-vv-dQdJe.js), so an asset URI can never change
                     # meaning: let the browser keep it and open the studio
                     # instantly from its own cache instead of re-downloading
-                    # 2.8MB every visit. The shell HTML stays no-store so a new
-                    # build's fresh asset names are always picked up at once.
+                    # the bundles every visit. The shell HTML stays no-store so
+                    # a new build's fresh asset names are always picked up.
                     if rest.startswith("assets/"):
                         self.send_header("Cache-Control", "public, max-age=31536000, immutable")
                     else:
