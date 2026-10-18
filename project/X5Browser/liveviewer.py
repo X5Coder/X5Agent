@@ -396,14 +396,15 @@ async def handle_asset(request: Any) -> Any:
     )
 
 
-async def handle_no_stream(request: Any) -> Any:
-    """The viewer page's optional library endpoints answer "nothing here".
+async def handle_no_content(request: Any) -> Any:
+    """The viewer page's optional extras answer "nothing here".
 
     x5-live.html asks the library's own API for an activity beacon and a live
-    event stream (both only exist on the library server, never on the relay the
-    gate proxies). Forwarding them to the relay produced a 404 per request and
-    an endless EventSource retry in the browser console; 204 is the documented
-    "no stream, stop reconnecting" answer and the beacon is simply a no-op.
+    event stream, and the browser asks for a favicon; none of them exist on the
+    relay the gate proxies. Forwarding them produced a 404 per request and an
+    endless EventSource retry in the browser console; 204 is the documented
+    "no stream, stop reconnecting" answer, the beacon is simply a no-op and the
+    viewer keeps the page's default icon.
     """
     from aiohttp import web
 
@@ -411,7 +412,7 @@ async def handle_no_stream(request: Any) -> Any:
 
 
 def _app() -> Any:
-    """The gate's whole public surface (five routes, nothing else)."""
+    """The gate's whole public surface (six routes, nothing else)."""
     from aiohttp import web
 
     application = web.Application(client_max_size=64 * 1024)
@@ -419,8 +420,9 @@ def _app() -> Any:
         [
             web.get("/view", handle_view),
             web.get("/websockify", handle_websockify),
-            web.get("/api/events", handle_no_stream),
-            web.post("/api/activity", handle_no_stream),
+            web.get("/api/events", handle_no_content),
+            web.post("/api/activity", handle_no_content),
+            web.get("/favicon.ico", handle_no_content),
             web.get("/{tail:.*}", handle_asset),
         ]
     )
