@@ -233,6 +233,7 @@
     "Opening a PDF Studio is now a single cheap call: its status request went from about 112KB and six reads of the studio file to under 1KB and one read, so opening, the background status check and the console's studio cards are instant.",
     "The studio's scripts and styles are now served compressed (the design compiler goes from 2.17MB to about 552KB on the wire), so a first open on a phone or a remote link downloads roughly a quarter of the bytes.",
     "Folder checks got cheaper across the app: the data layout is only re-created when something is actually missing, instead of re-creating every folder on each call.",
-    "Undo and redo are unchanged: every version stays saved on disk and is read only when you actually undo."
+    "Undo and redo are unchanged: every version stays saved on disk and is read only when you actually undo.",
+    "If the studio app has not started 8 seconds after a studio is opened, the opening frame says it is still loading and offers a reload, instead of leaving a silent black box that looks like a design which never arrives."
   ]
 }

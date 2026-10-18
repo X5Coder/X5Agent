@@ -27,11 +27,37 @@
        with availH = viewport - 44 toolbar - 166 composer reserve). */
     .fp-box{width:clamp(119px,min(calc(100vw - 32px),calc((100dvh - 210px) * 0.707)),100%);aspect-ratio:794/1123;background:#000;border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.45)}
     @media (max-width:640px){.fp-box{width:clamp(119px,min(calc(100vw - 20px),calc((100dvh - 210px) * 0.707)),100%)}}
+    /* A cover that never becomes the app must not stay silent: a blocked or
+       failed bundle would look exactly like a design that simply never loads.
+       The note lives INSIDE #root, so a normal mount removes it with the cover. */
+    .boot-note{position:fixed;left:0;right:0;bottom:16px;text-align:center;color:#8b8b8b;
+      font:500 12px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:none}
+    .boot-note.on{display:block}
+    .boot-note button{background:none;border:0;padding:0 2px;color:#fff;font:inherit;font-weight:700;
+      cursor:pointer;text-decoration:underline;text-underline-offset:2px}
   </style>
   <script type="module" crossorigin src="/studio-pdf/assets/index-vv-dQdJe.js"></script>
   <link rel="stylesheet" crossorigin href="/studio-pdf/assets/index-BXXnryd1.css">
 </head>
 <body>
-  <div id="root"><div class="first-paint" aria-hidden="true"><div class="first-bar"></div><div class="first-canvas"><div class="fp-box"></div></div></div></div>
+  <div id="root">
+    <div class="first-paint" aria-hidden="true"><div class="first-bar"></div><div class="first-canvas"><div class="fp-box"></div></div></div>
+    <div class="boot-note" id="x5-boot-note" role="status">Still loading the studio… <button type="button" id="x5-boot-retry">Reload</button></div>
+  </div>
+  <script>
+    /* The cover only exists until the studio app mounts (React renders into
+       #root and replaces it and this note). If the bundle never arrives —
+       blocked, offline, or a JS error — the black box would otherwise wait
+       forever with no explanation, so past the grace it says so and offers a
+       way out instead of hiding the failure. */
+    (function () {
+      var note = document.getElementById('x5-boot-note');
+      var retry = document.getElementById('x5-boot-retry');
+      if (retry) retry.addEventListener('click', function () { window.location.reload(); });
+      window.setTimeout(function () {
+        if (note && document.body.contains(note)) note.className = 'boot-note on';
+      }, 8000);
+    })();
+  </script>
 </body>
 </html>
