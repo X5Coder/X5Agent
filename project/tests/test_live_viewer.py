@@ -158,6 +158,8 @@ def test_view_serves_the_page_and_sets_the_gate_cookie(live_tokens):
     cookie = response.cookies[lv.COOKIE_NAME]
     assert cookie.value == PREVIEW
     assert cookie["httponly"] is True
+    # A cached page would replay a stale mode and skip the cookie handshake.
+    assert response.headers["Cache-Control"] == "no-store"
     # The token decides the mode: the query string cannot make it interactive.
     assert b"rfb.viewOnly = true;" in response.body
 

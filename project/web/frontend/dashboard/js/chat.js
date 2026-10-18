@@ -6127,6 +6127,44 @@ async function refreshLiveFrameFromServer() {
   } catch (_) {}
 }
 
+let lastLiveRecoverAt = 0;
+
+async function recoverExpiredLiveLink() {
+  // The stored token died server-side (console restart, new live session), so
+  // reloading it can never work: the panel would sit on "Loading" until the
+  // user asked the agent again. Mint a fresh link instead - persisted one
+  // first, then the server's preview mint - and re-point the open player.
+  // Bounded (once per 30s), skipped while a control/handoff UI owns the
+  // screen, and the frame keeps its old src until a new link really exists.
+  const now = Date.now();
+  if (now - lastLiveRecoverAt < 30000) return;
+  if (manualControlOpen || pendingLiveQid) return;
+  lastLiveRecoverAt = now;
+  let url = "";
+  try {
+    const res = await fetch("/api/live_state", { cache: "no-store" });
+    const data = res.ok ? await res.json().catch(() => null) : null;
+    const u = data && data.active && data.active.url;
+    if (typeof u === "string" && u.startsWith("http")) url = u;
+  } catch (_) {}
+  if (!url) {
+    try {
+      const { res, data } = await postBrowserApi("preview", 30000);
+      const u = data && typeof data.url === "string" ? data.url : "";
+      if (res.ok && u) url = u;
+    } catch (_) {}
+  }
+  if (!url) return;
+  browserStreamUrl = url;
+  const player = document.getElementById("liveMini");
+  const frame = player ? player.querySelector(".live-frame") : null;
+  if (!frame) return;
+  markLiveSeen();
+  const out = remoteLiveUrl(url);
+  if (frame.getAttribute("src") !== out) frame.src = out;
+  else reloadLiveFrame();
+}
+
 let liveWatchTimer = 0;
 let liveWatchMisses = 0;
 
@@ -6141,9 +6179,10 @@ function stopLiveWatch() {
 function startLiveWatch() {
   // The VNC socket can die silently (forwarding flap, insecure-context drop,
   // WSL distro terminate cycle) while the page sits "loading" forever:
-  // a cheap network probe of the exact frame URL reloads it back to life
-  // after 2 consecutive misses. Runs only while the player is open and is
-  // cleared with it, so it never spins alone.
+  // a cheap state probe of the exact frame URL mints a fresh link when the
+  // token expired and reloads it after 2 misses when the relay is unreachable.
+  // Runs only while the player is open and is cleared with it, so it never
+  // spins alone.
   stopLiveWatch();
   try {
     liveWatchTimer = setInterval(async () => {
@@ -6155,26 +6194,29 @@ function startLiveWatch() {
           stopLiveWatch();
           return;
         }
-        const ctl = new AbortController();
-        const t = setTimeout(() => {
-          try {
-            ctl.abort();
-          } catch (_) {}
-        }, 6000);
-        await fetch(src, { mode: "no-cors", cache: "no-store", signal: ctl.signal });
-        clearTimeout(t);
-        liveWatchMisses = 0;
-      } catch (_) {
-        liveWatchMisses += 1;
-        if (liveWatchMisses >= 2) {
+        const state = await liveUrlState(src);
+        if (state === "expired") {
+          // A dead token never recovers by reloading: mint a fresh one.
           liveWatchMisses = 0;
-          // Adopt a fresh server URL when the stored one died (new host or
-          // rotated token); plain reload otherwise.
           try {
-            await refreshLiveFrameFromServer();
+            await recoverExpiredLiveLink();
           } catch (_) {}
+          return;
         }
-      }
+        if (state === "unreachable") {
+          liveWatchMisses += 1;
+          if (liveWatchMisses >= 2) {
+            liveWatchMisses = 0;
+            // Adopt a fresh server URL when the stored one died (new host or
+            // rotated token); plain reload otherwise.
+            try {
+              await refreshLiveFrameFromServer();
+            } catch (_) {}
+          }
+          return;
+        }
+        liveWatchMisses = 0;
+      } catch (_) {}
     }, 20000);
   } catch (_) {}
 }
@@ -7030,32 +7072,39 @@ function showControlCard(url) {
   scrollToBottom();
 }
 
-async function isLiveUrlAlive(url, timeoutMs = 6000) {
-  // Bounded reachability probe for a persisted stream link: a no-cors fetch
-  // resolves (opaque) on any answer and rejects only when nothing listens
-  // (dead relay, browser closed while the library still reports running).
-  // Probes the remote-rewritten URL so a remote page checks this machine's
-  // viewer instead of the viewer's own localhost. Never throws.
-  // Same pattern as the live frame watcher.
+async function liveUrlState(url, timeoutMs = 6000) {
+  // Three states, because a dead token must never look like a healthy link:
+  //   "alive"       - the viewer answered for a valid token
+  //   "expired"     - the gate answered Not Connect (410): the token is dead
+  //   "unreachable" - nothing answered at all (relay down, wrong host)
+  // The gate publishes CORS headers only on that 410, so a READABLE status is
+  // itself the dead-token signal; a live token sends no such headers and the
+  // same request rejects. The no-cors probe then separates alive from offline.
+  // Probes the remote-rewritten URL (a remote page checks this machine's
+  // viewer instead of the viewer's own localhost). Never throws.
+  const ctl = new AbortController();
+  const timer = setTimeout(() => {
+    try {
+      ctl.abort();
+    } catch (_) {}
+  }, timeoutMs);
   try {
     const u = remoteLiveUrl(String(url || "")) || String(url || "");
-    if (!u.startsWith("http")) return false;
-    const ctl = new AbortController();
-    const timer = setTimeout(() => {
-      try {
-        ctl.abort();
-      } catch (_) {}
-    }, timeoutMs);
+    if (!u.startsWith("http")) return "unreachable";
+    try {
+      const res = await fetch(u, { mode: "cors", cache: "no-store", signal: ctl.signal });
+      return res.status === 410 ? "expired" : "alive";
+    } catch (_) {}
     try {
       await fetch(u, { mode: "no-cors", cache: "no-store", signal: ctl.signal });
-      return true;
+      return "alive";
     } catch (_) {
-      return false;
-    } finally {
-      clearTimeout(timer);
+      return "unreachable";
     }
   } catch (_) {
-    return false;
+    return "unreachable";
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -7078,16 +7127,29 @@ async function restoreLive() {
       // Browser runs with no paused loop: show the right-edge tab (interactive),
       // never a blocking card the user did not ask for. The persisted link is
       // probed first: the library can still report a session whose stream is
-      // already dead, and refresh must never resurrect a dead tab.
-      if (!(await isLiveUrlAlive(st.url))) return false;
+      // already dead, and refresh must never resurrect a dead tab. An expired
+      // token is not resurrected either - it gets a freshly minted watch-only
+      // link (the tab's control button re-takes control on demand).
+      const state = await liveUrlState(st.url);
+      if (state === "expired") {
+        autoMintMissingPreview();
+        return false;
+      }
+      if (state !== "alive") return false;
       browserStreamUrl = String(st.url);
       showEdgeTab(st.url, data.pending ? st.qid : null);
       return true;
     }
     if (st.mode === "preview") {
-      // Same dead-link guard as above: no probe, no tab. Opening the player
-      // always re-reads the freshest persisted URL first.
-      if (!st.url || !(await isLiveUrlAlive(st.url))) return false;
+      // Same dead-link guard as above: no probe, no tab. An expired token gets
+      // a freshly minted link, so a console restart needs no user action.
+      if (!st.url) return false;
+      const state = await liveUrlState(st.url);
+      if (state === "expired") {
+        autoMintMissingPreview();
+        return false;
+      }
+      if (state !== "alive") return false;
       showEdgeTab(st.url, data.pending ? st.qid : null);
       return true;
     }
@@ -7141,7 +7203,14 @@ async function autoCheckBrowserOnAgentOpen() {
     if (!data || !data.running) return;
     const url = data.stream && typeof data.stream.url === "string" ? data.stream.url : "";
     if (url) {
-      if (!(await isLiveUrlAlive(url))) return;
+      const state = await liveUrlState(url);
+      if (state === "expired") {
+        // The stored token is gone (console restart, new live session): mint a
+        // fresh link instead of silently leaving the user with nothing.
+        autoMintMissingPreview();
+        return;
+      }
+      if (state !== "alive") return;
       clearBrowserClosedFlag();
       markLiveSeen();
       showEdgeTab(url);

@@ -275,6 +275,10 @@ async def handle_view(request: Any) -> Any:
     except Exception:
         return web.Response(status=503, text="viewer page unavailable")
     response = web.Response(body=body, content_type="text/html", charset="utf-8")
+    # The page carries the mode and the gate cookie: a cached copy could be
+    # replayed for a later token (or without re-setting the cookie, leaving the
+    # socket unauthorized), so it is never stored.
+    response.headers["Cache-Control"] = "no-store"
     response.set_cookie(
         COOKIE_NAME,
         request.query.get("token", ""),
