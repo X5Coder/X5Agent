@@ -1192,3 +1192,80 @@ def test_parallel_turns_per_page_same_slide_rejected():
     finally:
         shutil.rmtree(str(_store.studios_root() / sid), ignore_errors=True)
         _session.delete_session(sid)
+
+
+# ---- shell + asset transport ------------------------------------------------
+# The iframe loads /studio-pdf/shell/<id> (small HTML, always fresh) and the
+# content-hashed bundles under /studio-pdf/assets/* (2.8MB, cacheable forever).
+# That split is what makes the studio open instantly on every visit instead of
+# re-downloading the whole bundle again — and what keeps a new build's renamed
+# bundles from being served out of a stale cache.
+
+import socket  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+
+
+def _raw_get(port: int, path: str) -> bytes:
+    head = f"GET {path} HTTP/1.1\r\nHost: t\r\nCookie: x5sess=ok\r\nConnection: close\r\n\r\n".encode()
+    sock = socket.create_connection(("127.0.0.1", port), timeout=5)
+    try:
+        sock.sendall(head)
+        buf = b""
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            try:
+                chunk = sock.recv(8192)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if not chunk:
+                break
+            buf += chunk
+        return buf
+    finally:
+        sock.close()
+
+
+def test_studio_shell_is_fresh_and_assets_are_cacheable(monkeypatch):
+    from core.studio import api as studio_api
+    from web.server import console_auth as ca
+    from web.server import server as S
+
+    assets = studio_api.studio_dist_dir() / "assets"
+    if not assets.is_dir():
+        pytest.skip("studio dist is not built")
+    names = sorted(p.name for p in assets.iterdir() if p.is_file())
+    if not names:
+        pytest.skip("studio dist has no assets")
+
+    monkeypatch.setattr(ca, "is_setup", lambda: True)
+    monkeypatch.setattr(ca, "session_valid", lambda token: bool(token))
+    monkeypatch.setattr(S, "_events_watchers", lambda: None)
+
+    httpd = S.ThreadedServer(("127.0.0.1", 0), S.DashboardHandler)
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        # The shell must stay no-store: a new build renames its bundles, so the
+        # HTML that points at them may never be replayed from a cache.
+        shell = _raw_get(port, "/studio-pdf/shell/pdf_1")
+        head = shell.split(b"\r\n\r\n", 1)[0]
+        assert b"200" in head.split(b"\r\n")[0], head[:200]
+        assert b"Cache-Control: no-store" in head, head[:400]
+
+        # A content-hashed asset is immutable: the browser keeps it forever and
+        # the next studio open loads it from disk with zero network traffic.
+        asset = _raw_get(port, "/studio-pdf/assets/" + names[0])
+        ahead = asset.split(b"\r\n\r\n", 1)[0]
+        assert b"200" in ahead.split(b"\r\n")[0], ahead[:200]
+        assert b"Cache-Control: public, max-age=31536000, immutable" in ahead, ahead[:400]
+
+        # An unknown asset name still 404s (never an HTML fallback).
+        miss = _raw_get(port, "/studio-pdf/assets/nope-000000.js")
+        mhead = miss.split(b"\r\n\r\n", 1)[0]
+        assert b"404" in mhead.split(b"\r\n")[0], mhead[:200]
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
