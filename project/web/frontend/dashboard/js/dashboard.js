@@ -5,7 +5,7 @@
  */
 "use strict";
 
-import { onPush } from "./events.js?v=5";
+import { onPush } from "./events.js?v=7";
 
 function setText(id, value) {
   const el = document.getElementById(id);
@@ -117,8 +117,8 @@ function populateStats(dash, cost, models, balance) {
 export async function initDashboard() {
   await refreshDashboard();
 
-  // hello section 2 (dashboard bundle, hashed): render without extra POSTs.
-  // Accepts both the hashed {hash,data} section and the legacy flat bundle.
+  // `dashboard` sync section (third in priority): render without extra POSTs.
+  // Accepts the flat bundle and a {hash,data} shell.
   onPush("dashboard", (d) => {
     if (!d) return;
     const b = d && typeof d === "object" && d.data && typeof d.data === "object" ? d.data : d;

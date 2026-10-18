@@ -1427,82 +1427,26 @@ _WATCHERS_STARTED = False
 _BROWSER_PUSH: dict = {"running": None, "url": None}
 _WS_PUSH: dict = {"version": 0}
 _DASH_PUSH_AT = 0.0
-_DASH_CACHE: dict = {}  # last fanned-out dashboard bundle (hello serves it, O(1))
+_DASH_CACHE: dict = {}  # last fanned-out dashboard bundle (sync serves it O(1))
 
-# ---- hello cache + hash (priority-ordered snapshot, refresh-on-change) ----
-# Order rule: most important first — last 50 agent chat messages, then the
-# dashboard bundle, then everything else. Each section is cached with a hash;
-# when the data changes the hash breaks, the cache refreshes, and a new hash
-# is minted — so clients re-render a section only when its hash changed.
+# ---- sync sections + hash (client owns the cache, server compares) ----
+# The browser keeps the last data + hash it received per section and POSTs
+# only the hashes it holds (/api/sync). This hub answers ON THE STREAM, in
+# priority order — status, agent, dashboard, rest — with the section frame
+# (fresh data + new hash) when the hash broke, or `unchanged` (op_id +
+# section, no data) when it still matches, so the stored render stays.
 # Hash = sha256 of the canonical JSON of the section (cheap, deterministic).
-_HELLO_CACHE: dict = {}   # section -> {"hash": str, "data": ...}
-_HELLO_LOCK = threading.Lock()
-_HELLO_LAST50 = 50
+_SYNC_ORDER = ("status", "agent", "dashboard", "rest")
+_SYNC_LAST50 = 50
 
 
 def _section_hash(data) -> str:
-    """Short stable hash of one snapshot section. Never raises."""
+    """Short stable hash of one section. Never raises."""
     try:
         raw = json.dumps(data, ensure_ascii=False, sort_keys=True, default=str)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
     except Exception:
         return "unhashable"
-
-
-def _hello_cached(section: str, builder) -> dict:
-    """Return {hash, data} for a section: cache hit when the hash matches.
-
-    builder() runs only on a miss (or when data changed). Thread-safe.
-    """
-    try:
-        fresh = builder()
-    except Exception:
-        fresh = None
-    try:
-        h = _section_hash(fresh)
-        with _HELLO_LOCK:
-            slot = _HELLO_CACHE.get(section)
-            if isinstance(slot, dict) and slot.get("hash") == h:
-                return slot  # unchanged: serve the cached copy, no rebuild
-            slot = {"hash": h, "data": fresh}
-            _HELLO_CACHE[section] = slot
-            return slot
-    except Exception:
-        return {"hash": "error", "data": fresh}
-
-
-def _hello_chat_last50() -> list:
-    """Most important first: last 50 agent chat messages (bounded)."""
-    try:
-        data = _data_json("conversation.json", [])
-        if not isinstance(data, list):
-            return []
-        return data[-_HELLO_LAST50:]
-    except Exception:
-        return []
-
-
-def _hello_dashboard() -> dict:
-    """Second: dashboard bundle (serves the warm cache when fresh)."""
-    try:
-        if _DASH_CACHE:
-            return _DASH_CACHE
-        return {"dashboard": _get_dashboard_data(), "cost": _get_cost_data(),
-                "balance": _get_balance_data(), "models": _get_models_data()}
-    except Exception:
-        return {}
-
-
-def _hello_invalidate(section: str | None = None) -> None:
-    """Drop cached hello sections (None = all). Next hello rebuilds + rehashes."""
-    try:
-        with _HELLO_LOCK:
-            if section is None:
-                _HELLO_CACHE.clear()
-            else:
-                _HELLO_CACHE.pop(section, None)
-    except Exception:
-        pass
 
 
 def _events_broadcast(etype: str, payload: dict) -> None:
@@ -1533,67 +1477,143 @@ def _events_broadcast(etype: str, payload: dict) -> None:
         pass
 
 
-def _events_snapshot() -> dict:
-    """Priority-ordered snapshot for a fresh SSE subscriber. Read-only.
+def _gateway_snapshot() -> dict:
+    """Canonical WhatsApp link state: verified, engine flags included.
 
-    Order: (1) last 50 chat messages FIRST — the most important, the UI
-    renders them immediately; (2) the dashboard bundle; (3) everything else
-    (browser/live/chat/workspace/scheduler/gateway). Every section carries
-    its hash: unchanged sections reuse cache, changed ones rebuild + rehash,
-    so the client updates a section only when its hash broke.
+    Never spawns the engine. Enforces linked-number == saved agent-number: a
+    proven mismatch wipes the session and reports state=mismatch (never a
+    fake link). Single owner of the gateway state shape: the `rest` section
+    and the /api/gateway handler both serve this.
     """
-    chat_sec = _hello_cached("chat_last50", _hello_chat_last50)
-    dash_sec = _hello_cached("dashboard", _hello_dashboard)
-    links = _live_snapshot()
-    running = bool(links.get("running"))
-    active = _live_active()
-    stream = None
-    if running and isinstance(active, dict) and active.get("url"):
-        stream = {"mode": active.get("mode"), "tool": active.get("tool"),
-                  "url": active["url"][:2000], "view_only": True}
-    try:
-        chat_active, chat_input = _chat_status()
-    except Exception:
-        chat_active, chat_input = False, ""
-    try:
-        sched = _get_scheduler_data()
-    except Exception:
-        sched = {"jobs": [], "executing": []}
-    gw: dict = {"state": "idle"}
     try:
         if str(PROJECT_ROOT) not in sys.path:
             sys.path.insert(0, str(PROJECT_ROOT))
         from gateway.whatsapp import adapter as _wa
-
-        live = _wa.status()
-        gw = {"state": live.get("state", "idle"), "linked": live.get("linked", ""),
-              "phone": live.get("phone", ""), "qr": bool(live.get("qr")),
-              "pairing": bool(live.get("pairing")), "error": live.get("error", "")}
+        from gateway import store as _store
+        saved = str(_store.read_config()["whatsapp"]["agent_number"] or "")
+        ok, linked = _wa.verify_against(saved)
+        out = _wa.status()
+        if not ok:
+            out = {
+                "state": "mismatch",
+                "phone": "",
+                "linked": linked,
+                "qr": False,
+                "qr_data_url": "",
+                "qr_at": 0,
+                "pairing": "",
+                "pairing_at": 0,
+                "error": f"Linked +{linked} is not the agent number +{saved} — session wiped. Link with the agent phone.",
+            }
+        out["engine"] = _wa.engine_status()
+        return out
     except Exception:
-        pass
-    rest = {"browser": {"running": running, "stream": stream},
-            "chat": {"active": chat_active, "input": chat_input},
-            "workspace": {"version": _WS_PUSH.get("version", 0)},
+        return {"state": "idle", "error": "gateway failed"}
+
+
+def _sync_status() -> dict:
+    """Section 1 (most important): activity state — chat run + browser."""
+    links = _live_snapshot()
+    running = bool(links.get("running"))
+    active_live = _live_active()
+    stream = None
+    if running and isinstance(active_live, dict) and active_live.get("url"):
+        stream = {"mode": active_live.get("mode"), "tool": active_live.get("tool"),
+                  "url": active_live["url"][:2000], "view_only": True}
+    try:
+        chat_active, chat_input = _chat_status()
+    except Exception:
+        chat_active, chat_input = False, ""
+    return {"chat": {"active": bool(chat_active), "input": chat_input},
+            "browser": {"running": running, "stream": stream}}
+
+
+def _sync_agent() -> dict:
+    """Section 2: last 50 agent chat messages (bounded)."""
+    try:
+        data = _data_json("conversation.json", [])
+        msgs = data[-_SYNC_LAST50:] if isinstance(data, list) else []
+    except Exception:
+        msgs = []
+    return {"chat_last50": msgs}
+
+
+def _sync_dashboard() -> dict:
+    """Section 3: dashboard bundle (serves the warm cache when fresh)."""
+    global _DASH_CACHE
+    try:
+        if _DASH_CACHE:
+            return {"dashboard": _DASH_CACHE}
+        bundle = {"dashboard": _get_dashboard_data(), "cost": _get_cost_data(),
+                  "balance": _get_balance_data(), "models": _get_models_data()}
+        _DASH_CACHE = bundle
+        return {"dashboard": bundle}
+    except Exception:
+        return {"dashboard": {}}
+
+
+def _sync_rest() -> dict:
+    """Section 4: everything else — workspace + scheduler + gateway."""
+    try:
+        sched = _get_scheduler_data()
+    except Exception:
+        sched = {"jobs": [], "executing": []}
+    return {"workspace": {"version": _WS_PUSH.get("version", 0)},
             "scheduler": sched,
-            "gateway": gw}
-    rest_sec = _hello_cached("rest", lambda: rest)
-    return {"chat_last50": chat_sec,
-            "dashboard": dash_sec,
-            "rest": rest_sec,
-            # Legacy flat keys (same data, no hash): old readers keep working.
-            "browser": rest["browser"],
-            "chat": rest["chat"],
-            "workspace": rest["workspace"],
-            "scheduler": rest["scheduler"],
-            "gateway": rest["gateway"]}
+            "gateway": _gateway_snapshot()}
+
+
+_SYNC_BUILDERS = {"status": _sync_status, "agent": _sync_agent,
+                  "dashboard": _sync_dashboard, "rest": _sync_rest}
+# Contract with the client: every section's data is an object keyed by the
+# push channels it feeds, so one frame renders exactly its own channels.
+
+
+def _sse_frame(obj: dict) -> bytes:
+    """One SSE frame: a NAMED event (`event: <type>`) + its JSON data line.
+
+    The event name is sanitised (alnum/_/- only) so a malformed frame can
+    never inject extra SSE lines. Never raises.
+    """
+    try:
+        raw = str((obj or {}).get("type") or "message")
+        name = "".join(ch for ch in raw if ch.isalnum() or ch in "_-")[:40] or "message"
+        payload = json.dumps(obj, ensure_ascii=False)
+    except Exception:
+        name, payload = "ping", "{}"
+    return (f"event: {name}\ndata: {payload}\n\n").encode("utf-8")
+
+
+def _sync_answer(op_id: str, wanted: dict) -> None:
+    """Answer one /api/sync request on the SSE stream, in priority order.
+
+    Per requested section: the hash the client holds still matches -> an
+    `unchanged` frame (keep the stored copy), otherwise the section frame
+    with fresh data + its new hash. Broadcast rather than unicast so every
+    open tab converges on the same data. Never raises.
+    """
+    for section in _SYNC_ORDER:
+        if section not in wanted:
+            continue
+        try:
+            fresh = _SYNC_BUILDERS[section]()
+        except Exception:
+            continue
+        h = _section_hash(fresh)
+        if wanted[section] and wanted[section] == h:
+            _events_broadcast("unchanged", {"op_id": op_id, "section": section})
+        else:
+            _events_broadcast(section, {"op_id": op_id, "section": section,
+                                        "hash": h, "data": fresh})
 
 
 def _events_emit_browser(force: bool = False) -> None:
-    """Broadcast the browser snapshot when it changed (or when forced).
+    """Signal the `status` section when the browser state changed.
 
-    Both the running flag and the stream URL come from the library's live links:
-    no persistence and no viewer/boundary healing here — the library keeps the
-    session alive and its own units self-heal.
+    Both the running flag and the stream URL come from the library's live
+    links: no persistence and no viewer/boundary healing here — the library
+    keeps the session alive and its own units self-heal. Clients answer a
+    signal by re-syncing; the section data travels as its own frame.
     """
     try:
         links = _live_snapshot()
@@ -1606,8 +1626,7 @@ def _events_emit_browser(force: bool = False) -> None:
             return
         last["running"] = running
         last["url"] = url
-        _events_broadcast("browser", {"running": running,
-                                      "stream": ({"url": url} if url else None)})
+        _events_broadcast("changed", {"section": "status"})
     except Exception:
         pass
 
@@ -1661,19 +1680,19 @@ def _workspace_version() -> int:
 
 
 def _events_emit_workspace(force: bool = False) -> None:
-    """Broadcast the workspace version when it changed (or when forced)."""
+    """Signal the `rest` section when the workspace version changed."""
     try:
         version = _workspace_version()
         if not force and _WS_PUSH.get("version") == version:
             return
         _WS_PUSH["version"] = version
-        _events_broadcast("workspace", {"version": version})
+        _events_broadcast("changed", {"section": "rest"})
     except Exception:
         pass
 
 
 def _events_emit_dashboard(force: bool = False) -> None:
-    """Broadcast dashboard/cost/balance/models (30s cadence at most)."""
+    """Collect dashboard/cost/balance/models and signal the section (30s max)."""
     global _DASH_PUSH_AT, _DASH_CACHE
     try:
         import time as _time
@@ -1681,12 +1700,9 @@ def _events_emit_dashboard(force: bool = False) -> None:
         if not force and now - _DASH_PUSH_AT < 30.0:
             return
         _DASH_PUSH_AT = now
-        bundle = {"dashboard": _get_dashboard_data(), "cost": _get_cost_data(),
-                   "balance": _get_balance_data(), "models": _get_models_data()}
-        _DASH_CACHE = bundle
-        _hello_invalidate("dashboard")  # data changed: next hello rebuilds + rehashes
-        _hello_invalidate("rest")
-        _events_broadcast("dashboard", bundle)
+        _DASH_CACHE = {"dashboard": _get_dashboard_data(), "cost": _get_cost_data(),
+                       "balance": _get_balance_data(), "models": _get_models_data()}
+        _events_broadcast("changed", {"section": "dashboard"})
     except Exception:
         pass
 
@@ -1702,11 +1718,6 @@ def _events_emit_chat(gateway: bool = False) -> None:
         payload = {"active": bool(active), "input": preview}
         if gateway:
             payload["gateway"] = True
-        if not active:
-            # A run just finished: conversation.json changed -> last-50 hash
-            # breaks on next hello, cache refreshes, new hash minted.
-            _hello_invalidate("chat_last50")
-            _hello_invalidate("rest")
         _events_broadcast("chat", payload)
     except Exception:
         pass
@@ -1818,14 +1829,14 @@ def _load_job_skill_text(skill_ref: str) -> str:
 
 
 def _events_emit_scheduler(force: bool = False) -> None:
-    """Broadcast the scheduler snapshot when it changed (or when forced)."""
+    """Signal the `rest` section when the scheduler snapshot changed."""
     try:
         data = _get_scheduler_data()
         fp = json.dumps(data, ensure_ascii=False, sort_keys=True)
         if not force and _SCHED_PUSH.get("fp") == fp:
             return
         _SCHED_PUSH["fp"] = fp
-        _events_broadcast("scheduler", data)
+        _events_broadcast("changed", {"section": "rest"})
     except Exception:
         pass
 
@@ -2280,6 +2291,9 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/terminal_access":
             self._handle_terminal_access_post()
+            return
+        if parsed.path == "/api/sync":
+            self._handle_sync_post()
             return
         if parsed.path == "/api/chat":
             self._handle_chat_post()
@@ -3075,13 +3089,15 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
     def _handle_events_api(self):
         """Realtime push channel (SSE) — replaces all client polling.
 
-        One stream per open tab: a `hello` snapshot first, then one frame per
-        state change (browser/live/chat/chat_done/dashboard/workspace) plus a
-        15s heartbeat (keeps NAT/proxy idle timeouts alive).
-        EventSource reconnects natively; every reconnect gets
-        a fresh hello, so no last-event-id bookkeeping is needed.
-        Server cost is O(1): singleton watchers broadcast only on change no
-        matter how many tabs listen — the SaaS-safe shape.
+        One stream per open tab. Frames are NAMED SSE events (`event: <type>`
+        + `data: {...}`): section frames (status/agent/dashboard/rest) answer
+        a /api/sync request in priority order, `unchanged` says the client
+        keeps its stored copy, `changed` says the server data moved (re-sync),
+        and the transient channels (run/chat_run/chat/chat_done/live) carry
+        run progress. A 15s heartbeat keeps NAT/proxy idle timeouts alive.
+        EventSource reconnects natively; the client re-syncs on open, so no
+        last-event-id bookkeeping is needed. Server cost is O(1): singleton
+        watchers signal only on change no matter how many tabs listen.
         """
         if self._check_events_auth():
             return
@@ -3116,19 +3132,12 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
 
             def _send(obj: dict) -> bool:
                 try:
-                    data = ("data: " + json.dumps(obj, ensure_ascii=False) + "\n\n").encode("utf-8")
-                    self.wfile.write(data)
+                    self.wfile.write(_sse_frame(obj))
                     self.wfile.flush()
                     return True
                 except Exception:
                     return False
 
-            try:
-                snap = _events_snapshot()
-            except Exception:
-                snap = {}
-            if not _send({"type": "hello", "data": snap}):
-                return
             while True:
                 try:
                     frame = q.get(timeout=15)
@@ -3145,6 +3154,29 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                         _EVENT_SUBS.remove(sub)
             except Exception:
                 pass
+
+    def _handle_sync_post(self):
+        """POST /api/sync {op_id, sections:[{section, hash}]} — browser → server.
+
+        The browser sends only the hashes it holds (a tiny request, all
+        sections at once). This answers with a receipt, then the changed
+        sections travel back ON THE SSE STREAM via _sync_answer, in priority
+        order (status → agent → dashboard → rest); sections whose hash still
+        matches answer `unchanged` and the stored copy stays.
+        """
+        data = self._read_json_body()
+        op_id = str(data.get("op_id") or "")[:40]
+        wanted: dict = {}
+        raw = data.get("sections")
+        for item in (raw if isinstance(raw, list) else [])[:len(_SYNC_ORDER)]:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("section") or "")
+            if name in _SYNC_BUILDERS:
+                wanted[name] = str(item.get("hash") or "")[:64]
+        self._send_json({"ok": True, "op_id": op_id, "sections": list(wanted.keys())})
+        if wanted:
+            _sync_answer(op_id, wanted)
 
     def _handle_shot_get(self, raw_path: str):
         """Serve one browser screenshot. Path must resolve inside Data/files/browser."""
@@ -3671,41 +3703,13 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({"error": "gateway failed"}, status=500)
 
     def _wa_live_state(self) -> dict:
-        """Canonical WhatsApp link state: verified, engine flags included.
-
-        Never spawns the engine. Enforces linked-number == saved
-        agent-number: a proven mismatch wipes the session and reports
-        state=mismatch (never a fake link).
-        """
-        try:
-            if str(PROJECT_ROOT) not in sys.path:
-                sys.path.insert(0, str(PROJECT_ROOT))
-            from gateway.whatsapp import adapter as _wa
-            from gateway import store as _store
-            saved = str(_store.read_config()["whatsapp"]["agent_number"] or "")
-            ok, linked = _wa.verify_against(saved)
-            out = _wa.status()
-            if not ok:
-                out = {
-                    "state": "mismatch",
-                    "phone": "",
-                    "linked": linked,
-                    "qr": False,
-                    "qr_data_url": "",
-                    "qr_at": 0,
-                    "pairing": "",
-                    "pairing_at": 0,
-                    "error": f"Linked +{linked} is not the agent number +{saved} — session wiped. Link with the agent phone.",
-                }
-            out["engine"] = _wa.engine_status()
-            return out
-        except Exception:
-            return {"state": "idle", "error": "gateway failed"}
+        """Canonical WhatsApp link state (owner: module-level _gateway_snapshot)."""
+        return _gateway_snapshot()
 
     def _gw_broadcast(self) -> None:
-        """Fan the canonical link state to every dashboard tab (SSE)."""
+        """Signal the `rest` section (gateway lives there) to every tab."""
         try:
-            _events_broadcast("gateway", self._wa_live_state())
+            _events_broadcast("changed", {"section": "rest"})
         except Exception:
             pass
 
@@ -4301,7 +4305,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         Default: the whole list (legacy callers keep working). With
         limit+before_id: the N messages BEFORE the given id (older slice),
         plus has_more so the UI auto-loads older pages on scroll-up.
-        SSE still pushes last-50 first via hello; this endpoint pages back.
+        SSE pushes the newest 50 as the agent section; this pages back.
         """
         try:
             try:
@@ -5774,10 +5778,11 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 if owned:
                     _run_frames_clear()
                     _events_emit_chat(gateway=gw)
-                    # Run persisted new messages: last-50 hash breaks, refresh + rehash.
-                    _hello_invalidate("chat_last50")
-                    _hello_invalidate("dashboard")
-                    _hello_invalidate("rest")
+                    # The run persisted new messages: signal the sections that
+                    # moved so every tab re-syncs and re-renders from hashes.
+                    _events_broadcast("changed", {"section": "agent"})
+                    _events_broadcast("changed", {"section": "dashboard"})
+                    _events_broadcast("changed", {"section": "rest"})
                     _events_broadcast("chat_done", {"gateway": True} if gw else {})
                     try:
                         _events_emit_scheduler(force=True)
@@ -5972,14 +5977,25 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             return {}
 
     def _handle_auth_status_get(self):
-        """GET /api/auth/status — always public: sign-in only, never setup."""
+        """GET /api/auth/status — public gate question, private owner detail.
+
+        `setup_needed`/`owner_missing` stay public: login.html decides which
+        screen to show from them. The owner email does NOT: it is returned only
+        to a caller that already holds a valid session, so an unauthenticated
+        visitor to the console port learns nothing about the owner.
+        """
         try:
             if str(PROJECT_ROOT) not in sys.path:
                 sys.path.insert(0, str(PROJECT_ROOT))
             from web.server import console_auth as _ca
+            try:
+                signed_in = _ca.session_valid(
+                    _ca.session_from_cookie(self.headers.get("Cookie")))
+            except Exception:
+                signed_in = False
             self._send_json({"setup_needed": False,
                              "owner_missing": not _ca.is_setup(),
-                             "email": _ca.owner_email()})
+                             "email": _ca.owner_email() if signed_in else ""})
         except Exception as e:
             self._send_json({"error": str(e)[:200]}, status=500)
 
@@ -6110,13 +6126,22 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         except Exception:
             pass
 
+class ThreadedServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
     def handle_error(self, request, client_address):
         # A vanished client (cancelled fetch, closed tab, dead scanner probe)
         # is routine noise, not a server bug: stay silent instead of dumping
         # a traceback for their disconnect. Real errors still print.
+        # ConnectionAbortedError (WinError 10053) is the Windows face of the
+        # same event: a tab closing an idle keep-alive socket mid-read.
+        # This hook belongs to the SERVER class: socketserver calls it from
+        # process_request_thread, so defining it on the handler never runs.
         try:
             exc_type = sys.exc_info()[0]
-            if exc_type is not None and issubclass(exc_type, (BrokenPipeError, ConnectionResetError)):
+            if exc_type is not None and issubclass(
+                    exc_type, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
                 return
         except Exception:
             pass
@@ -6124,11 +6149,6 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             super().handle_error(request, client_address)
         except Exception:
             pass
-
-
-class ThreadedServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-    daemon_threads = True
-    allow_reuse_address = True
 
 
 def _warmup_models() -> None:

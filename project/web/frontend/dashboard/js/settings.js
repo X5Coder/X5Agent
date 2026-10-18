@@ -531,8 +531,8 @@ export function initSettings() {
         // No task exists anymore: disarm a stale Continue pill (same key
         // the chat uses) and tell the Agent view to recompute its button.
         // Drop the boot hash-cache too: its chat_last50 slice is stale now —
-        // the next hello mints a fresh empty hash instead of repainting
-        // deleted messages for one beat.
+        // the next agent-section sync mints a fresh empty hash instead of
+        // repainting deleted messages for one beat.
         try { localStorage.removeItem("x5:stopped-task"); } catch (_) {}
         try { localStorage.removeItem("x5_boot_cache_v1"); } catch (_) {}
         try { window.dispatchEvent(new CustomEvent("x5:chat-cleared")); } catch (_) {}

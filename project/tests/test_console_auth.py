@@ -96,3 +96,52 @@ def test_cookie_parse():
     assert ca.session_from_cookie("x5sess=abc123; other=1") == "abc123"
     assert ca.session_from_cookie("other=1") is None
     assert ca.session_from_cookie(None) is None
+
+
+def test_auth_status_keeps_the_owner_email_private(monkeypatch):
+    """Real request: the gate question is public, the owner email is not."""
+    import json
+    import socket
+    import threading
+    import time
+
+    from web.server import server as S
+
+    monkeypatch.setattr(ca, "is_setup", lambda *a, **k: True)
+    monkeypatch.setattr(ca, "owner_email", lambda *a, **k: "owner@gmail.com")
+    monkeypatch.setattr(ca, "session_valid", lambda token: bool(token))
+
+    httpd = S.ThreadedServer(("127.0.0.1", 0), S.DashboardHandler)
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    def status(cookie: str) -> dict:
+        head = b"GET /api/auth/status HTTP/1.1\r\nHost: t\r\n"
+        if cookie:
+            head += f"Cookie: {cookie}\r\n".encode()
+        sock = socket.create_connection(("127.0.0.1", port), timeout=5)
+        try:
+            sock.sendall(head + b"\r\n")
+            chunks = []
+            deadline = time.time() + 5
+            while time.time() < deadline:
+                part = sock.recv(65536)
+                if not part:
+                    break
+                chunks.append(part)
+            raw = b"".join(chunks)
+        finally:
+            sock.close()
+        assert b"200" in raw.split(b"\r\n")[0], raw[:200]
+        return json.loads(raw.split(b"\r\n\r\n", 1)[1])
+
+    try:
+        anon = status("")
+        assert anon["owner_missing"] is False, anon
+        assert anon["email"] == "", anon  # no session -> nothing about the owner
+
+        signed_in = status("x5sess=ok")
+        assert signed_in["email"] == "owner@gmail.com", signed_in
+    finally:
+        httpd.shutdown()
+        httpd.server_close()

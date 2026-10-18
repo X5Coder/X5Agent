@@ -4,18 +4,18 @@
  */
 "use strict";
 
-import { initModal, hideBootSplash, animateIn } from "./ui.js?v=14";
+import { initModal, hideBootSplash, animateIn } from "./ui.js?v=13";
 import { initNavigation } from "./navigation.js?v=14";
-import { startEvents, whenHello, hasBootCache } from "./events.js?v=6";
-import { initWorkspace } from "./workspace.js?v=22";
-import { initDashboard } from "./dashboard.js?v=14";
-import { initCharts } from "./charts.js?v=21";
-import { initChat } from "./chat.js?v=104";
-import { initSchedule } from "./schedule.js?v=26";
+import { startEvents, whenFirstSync, hasBootCache } from "./events.js?v=7";
+import { initWorkspace } from "./workspace.js?v=23";
+import { initDashboard } from "./dashboard.js?v=16";
+import { initCharts } from "./charts.js?v=23";
+import { initChat } from "./chat.js?v=106";
+import { initSchedule } from "./schedule.js?v=27";
 import { initSkills } from "./skills.js?v=10";
-import { initGateway } from "./gateway.js?v=30";
+import { initGateway } from "./gateway.js?v=31";
 import { initAiModels } from "./ai_models.js?v=6";
-import { initSettings } from "./settings.js?v=13";
+import { initSettings } from "./settings.js?v=14";
 import { initStudioPdf } from "./studio_pdf.js?v=12";
 
 // Keeps .app pinned to the real visible area when the mobile keyboard
@@ -113,8 +113,8 @@ async function init() {
   // - Hash-cache hit (refresh): cached sections already replay into the
   //   modules synchronously, so the shell paints instantly — lift the
   //   splash fast (~one entrance beat) and reconcile with the network in
-  //   the background (unchanged hash = cached render stays, broken hash =
-  //   re-render + stored hash rewritten by events.js).
+  //   the background (events.js syncs hash-only: unchanged = cached render
+  //   stays, broken = re-render + stored hash rewritten).
   // - First run (no cache): wait for EVERY boot payload as before, so the
   //   splash lifts only when real data is in. allSettled + a bounded
   //   watchdog so one failed fetch can never trap the splash.
@@ -124,7 +124,7 @@ async function init() {
   } catch (_) {}
   if (cached) {
     const background = Promise.allSettled([
-      whenHello(),
+      whenFirstSync(),
       initDashboard(),
       initCharts(),
       initChat(),
@@ -157,7 +157,7 @@ async function init() {
   try {
     await Promise.race([
       Promise.allSettled([
-        whenHello(),
+        whenFirstSync(),
         initDashboard(),
         initCharts(),
         initChat(),

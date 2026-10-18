@@ -6,7 +6,7 @@
 "use strict";
 
 import { toast, openModal, closeModal, modalShell } from "./ui.js?v=13";
-import { onPush } from "./events.js?v=5";
+import { onPush } from "./events.js?v=7";
 
 let wsPath = "";
 let wsVersion = 0;

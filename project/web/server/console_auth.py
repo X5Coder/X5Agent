@@ -5,8 +5,10 @@ by `python install.py` is honored here immediately (and vice versa):
   Data/database/console_auth.json = {email, salt, hash, updated_at}
   hash = pbkdf2_hmac(sha256, password, salt, 200_000).hex()
 
-Sessions are in-memory random tokens (30 days); a server restart logs
-everyone out (fail-closed, documented). Cookie: HttpOnly + SameSite=Lax,
+Sessions are random tokens (30 days) held in memory and persisted to
+Data/database/console_sessions.json (bounded 1000, expired pruned on write),
+so a server restart does not log you out — only expiry or clearing that file
+does. Cookie: HttpOnly + SameSite=Lax,
 no Secure (the console is plain HTTP, so a Secure cookie would never be
 stored by the browser; the first-party Lax session is what keeps the login
 alive — see server._session_cookie).

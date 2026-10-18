@@ -1,12 +1,15 @@
 /**
- * boot_cache.js — persistent hash-cache for the boot snapshot.
+ * boot_cache.js — persistent hash-cache for the sync sections.
  *
- * What: stores each hello section as {hash, data} in localStorage.
+ * What: stores the hash of every sync section (status/agent/dashboard/rest)
+ *   plus the last data of every rendered channel, in localStorage.
  * Why: on refresh the shell paints cached data instantly, so the boot
- *   splash lifts without waiting for the network; a section re-renders
- *   only when its server hash breaks (data actually changed).
+ *   splash lifts without waiting for the network; a section re-renders only
+ *   when the server hash of the copy the browser holds breaks. The stored
+ *   hashes are exactly what events.js POSTs to /api/sync, so an unchanged
+ *   section costs one tiny request and no payload.
  * Owner: events.js restores + persists; modules render via onPush replay.
- * Limits: one key, best-effort (quota errors drop the largest section
+ * Limits: one key, best-effort (quota errors drop the largest channel
  *   first, never throw). No secrets stored (snapshot holds no tokens).
  */
 "use strict";

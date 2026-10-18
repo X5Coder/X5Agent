@@ -7,7 +7,7 @@
 
 import { openModal, closeModal, toast } from "./ui.js?v=13";
 import { navigate } from "./navigation.js?v=14";
-import { onPush } from "./events.js?v=5";
+import { onPush } from "./events.js?v=7";
 import { remoteLiveUrl } from "./live-url.js?v=2";
 
 // POST helpers: browser -> server is plain POST only.
@@ -147,7 +147,7 @@ let continueBusy = false;
 // attempts — a 409-retry sleeping through a STOP must never auto-start.
 let stopGen = 0;
 // Refresh-mid-run guard: true from script load until resumeActiveRun settles.
-// hello/history renders must not wipe or duplicate the live run while set.
+// Section/history renders must not wipe or duplicate the live run while set.
 let resumePending = true;
 let resumeSettled = false;
 // Full pending user text across refresh (preview from /api/chat_frames is
@@ -2029,12 +2029,12 @@ function prependHistoryMessages(msgs) {
   } catch (_) {}
 }
 
-function onHelloChatLast50(msgs) {
-  // hello section 1 (most important first): last-50 render immediately,
-  // but never wipe an in-flight run — same keep-rules as loadHistory.
-  // resumePending covers the window BEFORE resumeActiveRun sets its flags
-  // (that was the refresh-duplicate race: hello rendered, then resume
-  // appended a second user bubble + second Working).
+function onChatLast50Section(msgs) {
+  // The `agent` sync section (highest priority after status): last-50 render
+  // immediately, but never wipe an in-flight run — same keep-rules as
+  // loadHistory. resumePending covers the window BEFORE resumeActiveRun sets
+  // its flags (that was the refresh-duplicate race: the section rendered, then
+  // resume appended a second user bubble + second Working).
   try {
     if (resumePending || activeRun || activeThinking || catchupResume) return; // a run owns the UI right now
     if (!Array.isArray(msgs) || !msgs.length) {
@@ -7545,14 +7545,14 @@ async function resumeActiveRun() {
   // active=false — never rebuild a live Working block (that was the duplicate
   // steps-after-refresh bug). A Continue mid-run adopts the frozen block only
   // when the server resume_id matches its task; any other run gets a fresh one.
-  // Idempotent + single-live protected: a second call (double hello / double
+  // Idempotent + single-live protected: a second call (double sync / double
   // refresh) never appends a second bubble or second Working.
   if (resumeSettled || activeRun || (catchupResume && activeThinking)) {
     try { resumePending = false; } catch (_) {}
     return;
   }
   let fd = null;
-  // Bounded retry: the POST may still be registering (or an old hello may
+  // Bounded retry: the POST may still be registering (or the agent section may
   // have just rendered). Up to ~3s so an instant refresh after send still
   // finds its run instead of showing the task with no Working.
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -7586,7 +7586,7 @@ async function resumeActiveRun() {
     try { resumePending = false; resumeSettled = false; } catch (_) {}
     return;
   }
-  // A live run already rebuilt while we fetched (hello + second resume raced):
+  // A live run already rebuilt while we fetched (section + second resume raced):
   // never build a second Working.
   if (activeRun || (catchupResume && activeThinking) || document.getElementById("thinkingMsg")) {
     try { resumePending = false; resumeSettled = true; } catch (_) {}
@@ -8432,8 +8432,8 @@ export async function initChat() {
   onPush("chat", onChatPush);
   onPush("chat_done", onChatDonePush);
   onPush("run", onRunPush);
-  // hello section 1 arrives first (last-50, hashed): render immediately.
-  onPush("chat_last50", onHelloChatLast50);
+  // The `agent` section arrives first (last-50): render immediately.
+  onPush("chat_last50", onChatLast50Section);
   // Returning to the agent page re-checks the browser automatically, so a
   // session started while another page was open still shows its template.
   window.addEventListener("x5:agent-open", () => {
