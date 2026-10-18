@@ -242,7 +242,15 @@ def create_studio(title: str = "Untitled", pages: int = DEFAULT_PAGES) -> dict:
             "open_url": f"/studio-pdf/{sid}", "meta": meta}
 
 
-def get_studio(studio_id: str) -> dict:
+def _read_meta(studio_id: str) -> dict:
+    """Parse one studio's studio.json exactly once.
+
+    Every status derivation (designing / orientation / size lock / history
+    counts) needs this same file, and on an edited studio it is a large one —
+    the undo/redo stack holds a full copy of every design version — so a caller
+    that needs several of them reads it through here instead of paying one
+    file read plus one JSON parse of the whole history per helper.
+    """
     sid = validate_studio_id(studio_id)
     meta_path = _meta_path(sid)
     if not meta_path.is_file():
@@ -251,13 +259,52 @@ def get_studio(studio_id: str) -> dict:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
     except Exception as e:
         raise ValueError(f"Corrupt studio.json for {sid}: {e}") from None
+    return meta if isinstance(meta, dict) else {}
+
+
+def _asset_names(sid: str) -> tuple:
+    """Saved studio asset file names (fonts, images), bounded for reads."""
     base = _studio_dir(sid)
-    fonts = sorted([p.name for p in (base / "assets" / "fonts").iterdir() if p.is_file()]) if (base / "assets" / "fonts").is_dir() else []
-    images = sorted([p.name for p in (base / "assets" / "images").iterdir() if p.is_file()]) if (base / "assets" / "images").is_dir() else []
-    pages = meta.get("pages") if isinstance(meta, dict) and isinstance(meta.get("pages"), list) else []
+    fonts_dir = base / "assets" / "fonts"
+    images_dir = base / "assets" / "images"
+    fonts = sorted([p.name for p in fonts_dir.iterdir() if p.is_file()]) if fonts_dir.is_dir() else []
+    images = sorted([p.name for p in images_dir.iterdir() if p.is_file()]) if images_dir.is_dir() else []
+    return fonts[:100], images[:200]
+
+
+def get_studio(studio_id: str) -> dict:
+    sid = validate_studio_id(studio_id)
+    meta = _read_meta(sid)
+    fonts, images = _asset_names(sid)
+    pages = meta.get("pages") if isinstance(meta.get("pages"), list) else []
     return {"studio_id": sid, "meta": meta, "pages": pages,
-            "fonts": fonts[:100], "images": images[:200], "open_url": f"/studio-pdf/{sid}",
-            "history": history_counts(sid)}
+            "fonts": fonts, "images": images, "open_url": f"/studio-pdf/{sid}",
+            "history": _history_counts_from(meta)}
+
+
+def studio_view(studio_id: str) -> dict:
+    """The status view the console and the shell's poll read: everything from
+    ONE read of studio.json, and WITHOUT the undo/redo version stack.
+
+    That stack is a full copy of every design version (~100KB+ on an edited
+    studio, growing with every edit) and nothing here uses it — callers get the
+    small per-page COUNTS and read the stack only when the user really undoes.
+    It used to ride along on every open, every shell poll and every console
+    card sweep, and each derived field re-read and re-parsed the whole file.
+    """
+    sid = validate_studio_id(studio_id)
+    meta = _read_meta(sid)
+    counts = _history_counts_from(meta)  # counted BEFORE the stack is dropped
+    meta.pop("history", None)
+    fonts, images = _asset_names(sid)
+    pages = meta.get("pages") if isinstance(meta.get("pages"), list) else []
+    return {"studio_id": sid, "meta": meta, "pages": pages,
+            "fonts": fonts, "images": images, "open_url": f"/studio-pdf/{sid}",
+            "history": counts,
+            "designing": sorted(int(k) for k in _designing_fresh_from(meta)),
+            "orientation": _orientation_from(meta),
+            "size_locked": _size_locked_from(meta),
+            "page": _dims_from(meta)}
 
 
 def list_studios() -> list[dict]:
@@ -548,12 +595,27 @@ def asset_entries(studio_id: str) -> list[dict]:
     return out
 
 
+def _orientation_from(meta: dict) -> str:
+    o = str(meta.get("orientation", "portrait")).strip().lower()
+    return o if o in ORIENTATION_DIMS else "portrait"
+
+
+def _dims_from(meta: dict) -> dict:
+    return dict(ORIENTATION_DIMS[_orientation_from(meta)])
+
+
+def _size_locked_from(meta: dict) -> bool:
+    """A page is designed, or the first request already froze the size."""
+    if meta.get("size_locked") is True:
+        return True
+    pages = meta.get("pages") if isinstance(meta.get("pages"), list) else []
+    return any(isinstance(p, dict) and p.get("has_code") for p in pages)
+
+
 def studio_orientation(studio_id: str) -> str:
     """This studio's orientation: portrait|landscape (default portrait). Never raises."""
     try:
-        meta = json.loads(_meta_path(validate_studio_id(studio_id)).read_text(encoding="utf-8"))
-        o = str(meta.get("orientation", "portrait")).strip().lower()
-        return o if o in ORIENTATION_DIMS else "portrait"
+        return _orientation_from(_read_meta(studio_id))
     except Exception:
         return "portrait"
 
@@ -561,7 +623,7 @@ def studio_orientation(studio_id: str) -> str:
 def studio_dims(studio_id: str) -> dict:
     """Exact page box for this studio (single source of truth). Never raises."""
     try:
-        return dict(ORIENTATION_DIMS[studio_orientation(studio_id)])
+        return _dims_from(_read_meta(studio_id))
     except Exception:
         return dict(ORIENTATION_DIMS["portrait"])
 
@@ -569,11 +631,7 @@ def studio_dims(studio_id: str) -> dict:
 def studio_size_locked(studio_id: str) -> bool:
     """True once the first request was sent (orientation frozen). Never raises."""
     try:
-        meta = json.loads(_meta_path(validate_studio_id(studio_id)).read_text(encoding="utf-8"))
-        if meta.get("size_locked") is True:
-            return True
-        pages = meta.get("pages") if isinstance(meta.get("pages"), list) else []
-        return any(isinstance(p, dict) and p.get("has_code") for p in pages)
+        return _size_locked_from(_read_meta(studio_id))
     except Exception:
         return False
 
@@ -624,11 +682,15 @@ def _designing_fresh(raw: dict) -> dict:
     return out
 
 
+def _designing_fresh_from(meta: dict) -> dict:
+    """Live turns only ({str(page_no): iso_ts}) from an already parsed meta."""
+    return _designing_fresh(_designing_raw(meta))
+
+
 def designing_pages(studio_id: str) -> dict:
     """Pages with a LIVE turn running: {page_no: started_iso}. Never raises."""
     try:
-        meta = json.loads(_meta_path(validate_studio_id(studio_id)).read_text(encoding="utf-8"))
-        fresh = _designing_fresh(_designing_raw(meta))
+        fresh = _designing_fresh_from(_read_meta(studio_id))
         return {int(k): v for k, v in fresh.items()}
     except Exception:
         return {}
@@ -674,21 +736,25 @@ def clear_designing(studio_id: str, page_no: int) -> None:
         pass
 
 
+def _history_counts_from(meta: dict) -> dict:
+    """Per-page undo/redo depths, derived from an already parsed meta."""
+    hist = meta.get("history") if isinstance(meta.get("history"), dict) else {}
+    out: dict = {}
+    pages = meta.get("pages") if isinstance(meta.get("pages"), list) else []
+    for p in pages:
+        if isinstance(p, dict):
+            k = str(int(p.get("page_no", 0)))
+            u = hist.get("undo", {}).get(k) if isinstance(hist.get("undo"), dict) else []
+            r = hist.get("redo", {}).get(k) if isinstance(hist.get("redo"), dict) else []
+            out[k] = {"undo": len(u) if isinstance(u, list) else 0,
+                      "redo": len(r) if isinstance(r, list) else 0}
+    return out
+
+
 def history_counts(studio_id: str) -> dict:
     """Per-page undo/redo depths for toolbar button states. Never raises."""
     try:
-        meta = json.loads(_meta_path(validate_studio_id(studio_id)).read_text(encoding="utf-8"))
-        hist = meta.get("history") if isinstance(meta.get("history"), dict) else {}
-        out: dict = {}
-        pages = meta.get("pages") if isinstance(meta.get("pages"), list) else []
-        for p in pages:
-            if isinstance(p, dict):
-                k = str(int(p.get("page_no", 0)))
-                u = hist.get("undo", {}).get(k) if isinstance(hist.get("undo"), dict) else []
-                r = hist.get("redo", {}).get(k) if isinstance(hist.get("redo"), dict) else []
-                out[k] = {"undo": len(u) if isinstance(u, list) else 0,
-                          "redo": len(r) if isinstance(r, list) else 0}
-        return out
+        return _history_counts_from(_read_meta(studio_id))
     except Exception:
         return {}
 

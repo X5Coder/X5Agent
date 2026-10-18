@@ -79,28 +79,45 @@ def data_subdir(*parts: str) -> Path:
     return data_root().joinpath(*parts)
 
 
+def _layout_dirs() -> list[Path]:
+    """The X5Agent layout this module owns, in creation order."""
+    ws = workspace_root()
+    dr = data_root()
+    return [
+        ws,
+        ws / "inbox" / "docs",
+        ws / "inbox" / "tts",
+        ws / "inbox" / "media",
+        ws / "outbox" / "done",
+        ws / "outbox" / "ready_upload",
+        dr,
+        dr / "database",
+        dr / "database" / "studio_sessions",
+        dr / "studios",
+        dr / "vector",
+        dr / "files" / "images",
+        dr / "files" / "audio",
+        dr / "files" / "videos",
+        dr / "skills",
+        dr / "configs" / "plugin_configs",
+    ]
+
+
 def ensure_x5agent() -> dict[str, str]:
-    """Create X5Agent/{Workspace,Data} + Data subdirs. Idempotent. Never raises."""
+    """Create X5Agent/{Workspace,Data} + Data subdirs. Idempotent. Never raises.
+
+    The stores resolve every path through here, so this runs on each path build
+    and the steady state has to be cheap: when the layout is already complete it
+    only checks existence (a few stats) instead of re-issuing all sixteen mkdir
+    calls, which cost milliseconds per call. A directory that is missing — or a
+    tree that was deleted underneath us — still triggers the full pass, so the
+    layout exists whenever this returns.
+    """
     created: dict[str, str] = {}
     try:
-        dirs = [
-            workspace_root(),
-            workspace_root() / "inbox" / "docs",
-            workspace_root() / "inbox" / "tts",
-            workspace_root() / "inbox" / "media",
-            workspace_root() / "outbox" / "done",
-            workspace_root() / "outbox" / "ready_upload",
-            data_root(),
-            data_root() / "database",
-            data_root() / "database" / "studio_sessions",
-            data_root() / "studios",
-            data_root() / "vector",
-            data_root() / "files" / "images",
-            data_root() / "files" / "audio",
-            data_root() / "files" / "videos",
-            data_root() / "skills",
-            data_root() / "configs" / "plugin_configs",
-        ]
+        dirs = _layout_dirs()
+        if all(d.is_dir() for d in dirs):
+            return created
         for d in dirs:
             try:
                 d.mkdir(parents=True, exist_ok=True)

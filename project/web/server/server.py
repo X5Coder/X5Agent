@@ -10,6 +10,7 @@ Responsibility: serve dashboard files locally for development/editing page-by-pa
 
 from __future__ import annotations
 
+import gzip
 import http.server
 import hashlib
 import json
@@ -2051,6 +2052,48 @@ def _rewrite_preview_asset_urls(target: Path, norm_rel: str) -> bytes | None:
         return None
 
 
+# Studio dist over the wire: its bundles are big and plain text (Babel alone
+# is 2.1MB), and opening a studio must not wait for them uncompressed. A
+# gzipped copy is served when the client accepts one; compressed bytes are
+# cached per (path, mtime, size), which is safe and small because the assets
+# are content-hashed (one file can never change meaning).
+_STUDIO_GZIP_CACHE: dict = {}
+_STUDIO_GZIP_CACHE_MAX = 32
+_STUDIO_GZIP_TYPES = ("javascript", "json", "svg", "xml")
+
+
+def _wants_gzip(header: str) -> bool:
+    return "gzip" in str(header or "").lower()
+
+
+def _is_compressible(ctype: str) -> bool:
+    t = str(ctype or "").lower()
+    return t.startswith("text/") or any(k in t for k in _STUDIO_GZIP_TYPES)
+
+
+def _gzip_cached(path: Path, raw: bytes):
+    """Compressed copy of one dist file, or None so the caller sends it raw.
+
+    Deliberately swallows failures: compression is an optimization, and a
+    broken compressed copy must never turn a working studio open into an error.
+    """
+    try:
+        st = path.stat()
+        key = (str(path), int(st.st_mtime), len(raw))
+        hit = _STUDIO_GZIP_CACHE.get(key)
+        if hit is not None:
+            return hit
+        packed = gzip.compress(raw, 6)
+        if len(_STUDIO_GZIP_CACHE) >= _STUDIO_GZIP_CACHE_MAX:
+            # A full cache means a new build's names arrived: dropping the old
+            # entries costs one re-compress each and keeps the cache bounded.
+            _STUDIO_GZIP_CACHE.clear()
+        _STUDIO_GZIP_CACHE[key] = packed
+        return packed
+    except Exception:
+        return None
+
+
 class DashboardHandler(http.server.SimpleHTTPRequestHandler):
     """Serves the X5Agent console: dashboard static + JSON APIs."""
 
@@ -2236,9 +2279,20 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                         return
                     body = resolved.read_bytes()
                     ctype = mimetypes.guess_type(str(resolved))[0] or "application/octet-stream"
+                    # Compress on the way out (Babel 2.1MB -> ~566KB), so the
+                    # first studio open on a slower link is not dominated by an
+                    # uncompressed download. Vary keeps shared caches honest.
+                    encoding = ""
+                    if _wants_gzip(self.headers.get("Accept-Encoding", "")) and _is_compressible(ctype):
+                        packed = _gzip_cached(resolved, body)
+                        if packed is not None:
+                            body, encoding = packed, "gzip"
                     self.send_response(200)
                     self.send_header("Content-Type", ctype + ("; charset=utf-8" if ctype.startswith("text/") or "javascript" in ctype else ""))
                     self.send_header("Content-Length", str(len(body)))
+                    if encoding:
+                        self.send_header("Content-Encoding", encoding)
+                        self.send_header("Vary", "Accept-Encoding")
                     # Vite names every bundle by its content hash
                     # (index-vv-dQdJe.js), so an asset URI can never change
                     # meaning: let the browser keep it and open the studio

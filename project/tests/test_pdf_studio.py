@@ -1194,6 +1194,45 @@ def test_parallel_turns_per_page_same_slide_rejected():
         _session.delete_session(sid)
 
 
+# ---- studio payload weight --------------------------------------------------
+def test_studio_get_never_ships_the_design_history_stack():
+    """GET /api/studio is what every studio open, every 3s shell poll and every
+    console card sweep pays for: it must carry the small history COUNTS, never
+    the whole undo/redo version stack (100KB+ on an edited studio, growing with
+    each edit) — the shell asks /api/studio/history only when the user undoes.
+    """
+    import json
+    import shutil
+    from core.studio import api as _api
+    from core.studio import store as _store
+    from plugins.core_plugins.studio_page import tool as _page
+
+    created = _store.create_studio(title="UT Payload Weight", pages=1)
+    sid = created["studio_id"]
+    try:
+        _store.mark_designing(sid, 1)
+        _page.execute(studio_id=sid, action="deliver", page_no=1,
+                      code="export default function Page01() { return (<section><h1>one</h1></section>); }")
+        _page.execute(studio_id=sid, action="patch", page_no=1, old="<h1>one</h1>", new="<h1>two</h1>")
+        _store.clear_designing(sid, 1)
+        # The edit really left a version stack on disk ("<page_no>": {undo, redo}).
+        assert _store.history_counts(sid).get("1", {}).get("undo"), "an edit must leave an undo stack"
+
+        code, out = _api.handle_get(f"studio_id={sid}")
+        assert code == 200
+        # ...while everything the shell reads from this payload still rides.
+        assert out["meta"]["title"] == "UT Payload Weight"
+        assert len(out["pages"]) == 1 and out["pages"][0]["has_code"] is True
+        assert out["history"].get("1", {}).get("undo"), out["history"]
+        assert "orientation" in out and "size_locked" in out and "page" in out
+        # The stack itself never rides along, so the payload stays tiny.
+        assert "history" not in out["meta"], "the raw design history must not be shipped"
+        raw = len(json.dumps(out, ensure_ascii=False).encode("utf-8"))
+        assert raw < 4096, f"studio payload must stay small, got {raw} bytes"
+    finally:
+        shutil.rmtree(str(_store.studios_root() / sid), ignore_errors=True)
+
+
 # ---- shell + asset transport ------------------------------------------------
 # The iframe loads /studio-pdf/shell/<id> (small HTML, always fresh) and the
 # content-hashed bundles under /studio-pdf/assets/* (cacheable forever).
@@ -1201,13 +1240,14 @@ def test_parallel_turns_per_page_same_slide_rejected():
 # re-downloading the bundles again — and what keeps a new build's renamed
 # bundles from being served out of a stale cache.
 
+import gzip  # noqa: E402
 import socket  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 
 
-def _raw_get(port: int, path: str) -> bytes:
-    head = f"GET {path} HTTP/1.1\r\nHost: t\r\nCookie: x5sess=ok\r\nConnection: close\r\n\r\n".encode()
+def _raw_get(port: int, path: str, extra: str = "") -> bytes:
+    head = f"GET {path} HTTP/1.1\r\nHost: t\r\nCookie: x5sess=ok\r\nConnection: close\r\n{extra}\r\n".encode()
     sock = socket.create_connection(("127.0.0.1", port), timeout=5)
     try:
         sock.sendall(head)
@@ -1261,6 +1301,20 @@ def test_studio_shell_is_fresh_and_assets_are_cacheable(monkeypatch):
         ahead = asset.split(b"\r\n\r\n", 1)[0]
         assert b"200" in ahead.split(b"\r\n")[0], ahead[:200]
         assert b"Cache-Control: public, max-age=31536000, immutable" in ahead, ahead[:400]
+
+        # Text assets travel gzipped when the client accepts it (the studio's
+        # Babel chunk is 2.1MB, and a first open must not pay for it raw), while
+        # a client that does not ask still gets the plain body.
+        text_names = [n for n in names if n.endswith(".js") or n.endswith(".css")]
+        assert text_names, names
+        plain = _raw_get(port, "/studio-pdf/assets/" + text_names[0])
+        packed = _raw_get(port, "/studio-pdf/assets/" + text_names[0], extra="Accept-Encoding: gzip\r\n")
+        phead, pbody = packed.split(b"\r\n\r\n", 1)
+        assert b"Content-Encoding: gzip" in phead, phead[:400]
+        assert b"Vary: Accept-Encoding" in phead, phead[:400]
+        assert b"Content-Encoding" not in plain.split(b"\r\n\r\n", 1)[0], "unasked clients stay plain"
+        assert len(pbody) < len(plain.split(b"\r\n\r\n", 1)[1]), "the gzipped body must be smaller"
+        assert gzip.decompress(pbody) == plain.split(b"\r\n\r\n", 1)[1], "same bytes once unpacked"
 
         # An unknown asset name still 404s (never an HTML fallback).
         miss = _raw_get(port, "/studio-pdf/assets/nope-000000.js")

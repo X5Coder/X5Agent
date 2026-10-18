@@ -186,15 +186,11 @@ def handle_get(query: str) -> tuple[int, dict]:
         sid = (qs.get("studio_id", [""])[0] or "").strip()
         if not sid:
             return 400, {"error": "studio_id is required"}
-        info = _store.get_studio(sid)
-        return 200, {"studio_id": sid, "meta": info["meta"], "pages": info["pages"],
-                     "fonts": info["fonts"], "images": info["images"],
-                     "open_url": info["open_url"],
-                     "history": info.get("history") or {},
-                     "designing": sorted(_store.designing_pages(sid).keys()),
-                     "orientation": _store.studio_orientation(sid),
-                     "size_locked": _store.studio_size_locked(sid),
-                     "page": _store.studio_dims(sid)}
+        # ONE read of studio.json for the whole view, and no undo/redo version
+        # stack inside meta (see store.studio_view): this call runs on every
+        # studio open, on the shell's 3s poll and on every console card sweep,
+        # so it must stay a single cheap read.
+        return 200, _store.studio_view(sid)
     except FileNotFoundError as e:
         return 404, {"error": str(e)[:300]}
     except ValueError as e:

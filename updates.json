@@ -1,6 +1,6 @@
 {
-  "version": "0.67.2",
-  "description": "Opening the PDF Studio is now instant. The studio's big libraries - the design compiler (~2.2MB) and the PDF export tools - are no longer part of the first download, so the toolbar, canvas and composer paint immediately and the compiler is fetched in the background while the design area shows its black box (an already-saved design appears as soon as the compiler is ready, and the browser keeps it after the first open). If the compiler cannot be loaded, the studio retries three times and then says so instead of spinning forever.",
+  "version": "0.67.3",
+  "description": "Opening the PDF Studio stopped paying for its own bookkeeping. Every studio status call used to ship the whole design undo/redo version stack - about 112KB on an edited studio and growing with each edit - even though nothing on the page reads it, and it re-read and re-parsed that whole studio file once per derived field (six times), while every path it built re-created sixteen folders. Opening a studio, the shell's background status check and the console's studio cards all carried that. Now each call is one read that returns only the small counts, folder checks are cheap everywhere, and the studio's scripts and styles travel compressed - so opening is roughly fifteen times cheaper on the server and a first open on a phone or a remote link downloads about a quarter of the bytes.",
   "features": [
     "The PDF Studio now opens instantly: the design compiler (~2.2MB) and the PDF export tools are downloaded only when they are really needed, so the toolbar, canvas and composer paint right away instead of waiting for a large file to arrive first.",
     "The design compiler downloads in the background while the design area shows its black box, so an already-saved design appears the moment the compiler is ready - and the browser keeps it after the first open, making every later visit instant.",
@@ -229,6 +229,10 @@
     "New memory tool: the agent can read, write, edit or delete its own long-term notes by itself — the only memory it controls, and it is never sent automatically.",
     "Facts memory absorbed the old important-notes memory, and the separate image memory is gone (images are ordinary Workspace files now).",
     "Long-term memories are refreshed every 30 messages (was 50) and any memory that passes 1000 tokens is compressed automatically without losing information.",
-    "Old memories are kept: existing user and agent memory files are read and upgraded in place, so nothing is lost."
+    "Old memories are kept: existing user and agent memory files are read and upgraded in place, so nothing is lost.",
+    "Opening a PDF Studio is now a single cheap call: its status request went from about 112KB and six reads of the studio file to under 1KB and one read, so opening, the background status check and the console's studio cards are instant.",
+    "The studio's scripts and styles are now served compressed (the design compiler goes from 2.17MB to about 552KB on the wire), so a first open on a phone or a remote link downloads roughly a quarter of the bytes.",
+    "Folder checks got cheaper across the app: the data layout is only re-created when something is actually missing, instead of re-creating every folder on each call.",
+    "Undo and redo are unchanged: every version stays saved on disk and is read only when you actually undo."
   ]
 }

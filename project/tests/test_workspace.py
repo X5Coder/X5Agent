@@ -179,3 +179,29 @@ def test_downloads_virtual_merge():
                             print("test stash left at", stashed)
             except Exception:
                 pass
+
+
+def test_ensure_x5agent_rebuilds_a_missing_dir(tmp_path, monkeypatch):
+    """The layout guarantee survives a deletion, and the steady state is cheap.
+
+    Every store resolves its paths through ensure_x5agent(), so the second and
+    later calls must not re-issue the whole mkdir pass — but a directory that
+    disappeared (or a tree that was deleted) must still be rebuilt.
+    """
+    import shutil
+    from core import paths as P
+
+    monkeypatch.setattr(P, "x5agent_root", lambda: tmp_path / "X5Agent")
+    monkeypatch.setattr(P, "data_root", lambda: tmp_path / "X5Agent" / "Data")
+
+    P.ensure_x5agent()
+    assert (tmp_path / "X5Agent" / "Data" / "database" / "studio_sessions").is_dir()
+    assert (tmp_path / "X5Agent" / "Workspace" / "inbox" / "docs").is_dir()
+
+    shutil.rmtree(str(tmp_path / "X5Agent" / "Data" / "studios"))
+    P.ensure_x5agent()
+    assert (tmp_path / "X5Agent" / "Data" / "studios").is_dir(), "a missing dir must come back"
+
+    shutil.rmtree(str(tmp_path / "X5Agent"))
+    P.ensure_x5agent()
+    assert (tmp_path / "X5Agent" / "Data" / "vector").is_dir(), "a deleted tree must be rebuilt"
