@@ -346,10 +346,29 @@ def test_service_hands_the_gate_owner_over(monkeypatch):
 # -- app surface -----------------------------------------------------------
 
 
-def test_app_exposes_only_the_three_routes():
+def test_app_exposes_only_the_expected_routes():
     app = lv._app()
     paths = {resource.canonical for resource in app.router.resources()}
-    assert paths == {"/view", "/websockify", "/{tail}"}
+    assert paths == {
+        "/view",
+        "/websockify",
+        "/api/events",
+        "/api/activity",
+        "/{tail}",
+    }
+
+
+def test_library_optional_endpoints_answer_without_a_stream():
+    """The page's own activity beacon / event stream never reach the relay.
+
+    Proxying them produced a 404 per request and an endless EventSource retry
+    in the browser console; the gate answers "no stream" instead.
+    """
+    events = _run(lv.handle_no_stream(_request("/api/events")))
+    assert events.status == 204
+    assert events.headers["Cache-Control"] == "no-store"
+    beacon = _run(lv.handle_no_stream(_request("/api/activity")))
+    assert beacon.status == 204
 
 
 def test_start_and_stop_are_safe_to_repeat(monkeypatch):

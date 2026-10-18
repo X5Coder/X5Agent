@@ -396,8 +396,22 @@ async def handle_asset(request: Any) -> Any:
     )
 
 
+async def handle_no_stream(request: Any) -> Any:
+    """The viewer page's optional library endpoints answer "nothing here".
+
+    x5-live.html asks the library's own API for an activity beacon and a live
+    event stream (both only exist on the library server, never on the relay the
+    gate proxies). Forwarding them to the relay produced a 404 per request and
+    an endless EventSource retry in the browser console; 204 is the documented
+    "no stream, stop reconnecting" answer and the beacon is simply a no-op.
+    """
+    from aiohttp import web
+
+    return web.Response(status=204, headers={"Cache-Control": "no-store"})
+
+
 def _app() -> Any:
-    """The gate's whole public surface (three routes, nothing else)."""
+    """The gate's whole public surface (five routes, nothing else)."""
     from aiohttp import web
 
     application = web.Application(client_max_size=64 * 1024)
@@ -405,6 +419,8 @@ def _app() -> Any:
         [
             web.get("/view", handle_view),
             web.get("/websockify", handle_websockify),
+            web.get("/api/events", handle_no_stream),
+            web.post("/api/activity", handle_no_stream),
             web.get("/{tail:.*}", handle_asset),
         ]
     )
