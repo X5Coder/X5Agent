@@ -369,7 +369,12 @@ async def handle_asset(request: Any) -> Any:
             text="viewer upstream is down", headers={"Retry-After": "2"}
         )
     return web.Response(
-        body=body, content_type=ctype, headers={"Cache-Control": "public, max-age=600"}
+        body=body,
+        content_type=ctype,
+        # Never cache: a browser that kept a previously truncated/older module
+        # would keep failing long after the proxy was fixed, and these files are
+        # small and local (the whole point of the gate is one correct copy).
+        headers={"Cache-Control": "no-store"},
     )
 
 

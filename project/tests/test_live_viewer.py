@@ -223,6 +223,8 @@ def test_asset_proxy_serves_the_whole_file(monkeypatch):
         assert response.body == payload
         assert response.content_length == len(payload)
         assert response.content_type == "text/javascript"
+        # A cached partial copy would keep the browser broken after the fix.
+        assert response.headers["Cache-Control"] == "no-store"
         with pytest.raises(web.HTTPRequestEntityTooLarge):
             _run(lv.handle_asset(
                 _request("/core/huge.js", match_info={"tail": "core/huge.js"})))
