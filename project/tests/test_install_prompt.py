@@ -187,10 +187,57 @@ def test_modules_missing_sees_the_file_pip_just_replaced(tmp_path, monkeypatch):
 
 
 def test_required_imports_are_the_dependency_guard():
-    assert install.REQUIRED_IMPORTS == ("sentence_transformers", "numpy")
+    assert install.REQUIRED_IMPORTS == ("sentence_transformers", "numpy", "chromadb")
     source = INSTALL_PY.read_text(encoding="utf-8")
     assert source.count("_modules_missing(REQUIRED_IMPORTS)") == 2, (
         "both the before and after checks must use a fresh interpreter")
+
+
+# --- declared versions are part of the dependency guard -------------------
+
+def test_requirement_parsing_handles_pins_ranges_and_extras():
+    assert install._requirement_name("x5browser==1.6.2") == "x5browser"
+    assert install._requirement_name("curl-cffi>=0.5") == "curl-cffi"
+    assert install._requirement_name("uvicorn[standard]>=0.18") == "uvicorn"
+    assert install._pinned_version("x5browser==1.6.2") == "1.6.2"
+    assert install._pinned_version("chromadb>=1.0,<2.0") == ""
+
+
+def test_deps_out_of_sync_sees_a_pin_bump_and_a_missing_dep(tmp_path, monkeypatch):
+    """The regression: a bumped pin (or a new dep) used to be ignored by updates."""
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = \"x5agent\"\ndependencies = [\n"
+        '    "pytest==8.0.0",\n'
+        '    "x5-not-installed-anywhere==1.0",\n'
+        '    "chromadb>=1.0,<2.0",\n'
+        "]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(install, "PROJECT_ROOT", tmp_path)
+    problems = install._deps_out_of_sync()
+    assert any(p.startswith("pytest ") and p.endswith("-> 8.0.0") for p in problems)
+    assert "x5-not-installed-anywhere (missing)" in problems
+    assert not any(p.startswith("chromadb ") and "->" in p for p in problems), (
+        "ranges are presence-checked only, never version-compared")
+
+
+def test_deps_out_of_sync_is_quiet_when_declared_versions_match(tmp_path, monkeypatch):
+    import importlib.metadata as metadata
+
+    installed = metadata.version("pytest")
+    (tmp_path / "pyproject.toml").write_text(
+        f"[project]\nname = \"x5agent\"\ndependencies = [\"pytest=={installed}\"]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(install, "PROJECT_ROOT", tmp_path)
+    assert install._deps_out_of_sync() == []
+
+
+def test_real_pyproject_declares_the_pinned_browser_layer():
+    requirements = install._declared_requirements()
+    assert requirements, "dependencies array must be readable"
+    assert any(r.startswith("x5browser==") for r in requirements)
+    assert any(r.startswith("chromadb") for r in requirements)
 
 
 # --- installer must run before dependencies exist -------------------------

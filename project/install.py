@@ -35,8 +35,10 @@ from __future__ import annotations
 
 import getpass
 import hashlib
+import importlib.metadata
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -55,7 +57,8 @@ CONSOLE_PORT = 7777
 MIN_PYTHON = (3, 10)
 BROWSER_PYTHON = (3, 12)  # x5browser 1.6.2 floor is 3.10; 3.12 still recommended for full browser support
 # Imported by the dependency check (fresh interpreter, never this process).
-REQUIRED_IMPORTS = ("sentence_transformers", "numpy")
+# chromadb is required since every embedding lives in the Chroma store.
+REQUIRED_IMPORTS = ("sentence_transformers", "numpy", "chromadb")
 
 
 def parse_args(argv=None):
@@ -182,8 +185,63 @@ def _modules_missing(names: tuple[str, ...]) -> list[str]:
     return (proc.stdout or "").split()
 
 
+def _declared_requirements() -> list[str]:
+    """Dependency strings declared in pyproject.toml (empty when unreadable)."""
+    try:
+        text = (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    block = re.search(r"^dependencies\s*=\s*\[(.*?)\]", text, re.S | re.M)
+    if not block:
+        return []
+    return [item.strip() for item in re.findall(r"[\"']([^\"']+)[\"']", block.group(1))
+            if item.strip()]
+
+
+def _requirement_name(requirement: str) -> str:
+    """Distribution name of a requirement string ("x5browser==1.6.2" -> "x5browser")."""
+    return re.split(r"[<>=!~\[; ]", requirement, maxsplit=1)[0].strip()
+
+
+def _pinned_version(requirement: str) -> str:
+    """Exact version of an `==` requirement, else "" (ranges are not enforced here)."""
+    if "==" not in requirement:
+        return ""
+    return requirement.split("==", 1)[1].split(",")[0].strip()
+
+
+def _deps_out_of_sync() -> list[str]:
+    """Declared dependencies that are missing or not at their pinned version.
+
+    Offline and cheap (installed dist metadata only, no network), so an update
+    that bumps a pin or adds a dependency actually installs it. Without this,
+    `ensure_dependencies()` only looked for missing imports and an existing
+    install kept an old pinned library forever.
+    """
+    problems: list[str] = []
+    for requirement in _declared_requirements():
+        name = _requirement_name(requirement)
+        if not name:
+            continue
+        try:
+            installed = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            problems.append(f"{name} (missing)")
+            continue
+        wanted = _pinned_version(requirement)
+        if wanted and installed.lower() != wanted.lower():
+            problems.append(f"{name} {installed} -> {wanted}")
+    return problems
+
+
 def ensure_dependencies() -> bool:
-    """Install project dependencies once when missing (pip install -e .).
+    """Install/sync project dependencies (pip install -e .) when needed.
+
+    Needed when a required import is missing, the `x5agent` command is gone,
+    or a declared dependency does not match what is installed (an update that
+    bumps a pinned library, or adds a new one). Version sync is offline and
+    cheap: it reads installed dist metadata, so a normal update no longer
+    keeps an old pinned package forever.
 
     This is what collapses the old 2-step flow
     (`pip install -e .` then `python install.py`) into a single command.
@@ -201,11 +259,20 @@ def ensure_dependencies() -> bool:
     (always verified in a fresh interpreter - never in this process).
     """
     missing = _modules_missing(REQUIRED_IMPORTS)
+    out_of_sync = _deps_out_of_sync()
     want_cmd = shutil.which("x5agent") is None
-    if not missing and not want_cmd:
+    if not missing and not out_of_sync and not want_cmd:
         return True
-    what = ", ".join(missing) if missing else "x5agent command"
-    print(f"  installing missing packages: {what} (pip install -e .)...")
+    reasons: list[str] = []
+    seen: set[str] = set()
+    for item in [*missing, *out_of_sync]:
+        key = _requirement_name(item.split(" ", 1)[0]).replace("_", "-").lower()
+        if key and key in seen:
+            continue
+        seen.add(key)
+        reasons.append(item)
+    what = ", ".join(reasons) if reasons else "x5agent command"
+    print(f"  syncing packages: {what} (pip install -e .)...")
     try:
         tool = subprocess.run(
             [sys.executable, "-m", "pip", "install", "-U",
@@ -258,6 +325,9 @@ def ensure_dependencies() -> bool:
     if still_missing:
         print(f"  ERROR: still missing: {', '.join(still_missing)}", file=sys.stderr)
         return False
+    still_out = _deps_out_of_sync()
+    if still_out:
+        _warn("declared versions still differ: " + ", ".join(still_out))
     _ok("dependencies installed")
     return True
 
