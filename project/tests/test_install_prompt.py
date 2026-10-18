@@ -240,6 +240,26 @@ def test_real_pyproject_declares_the_pinned_browser_layer():
     assert any(r.startswith("chromadb") for r in requirements)
 
 
+def test_stale_project_metadata_is_detected(tmp_path, monkeypatch):
+    """A pull that bumps a pin leaves the editable dist asking for the old one."""
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = \"x5agent\"\ndependencies = [\n"
+        '    "x5_probe_pkg==2.0",\n'
+        '    "chromadb>=1.0,<2.0",\n'
+        "]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(install, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(install.importlib.metadata, "requires",
+                        lambda name: ["x5_probe_pkg==1.0", "chromadb>=1.0,<2.0"])
+    stale = install._stale_dist_pins()
+    assert stale == ["x5-probe-pkg metadata x5_probe_pkg==1.0 -> 2.0"]
+    # A matching recorded pin is not stale.
+    monkeypatch.setattr(install.importlib.metadata, "requires",
+                        lambda name: ["x5_probe_pkg==2.0"])
+    assert install._stale_dist_pins() == []
+
+
 # --- installer must run before dependencies exist -------------------------
 
 def test_installer_imports_stdlib_only():

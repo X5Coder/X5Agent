@@ -210,6 +210,32 @@ def _pinned_version(requirement: str) -> str:
     return requirement.split("==", 1)[1].split(",")[0].strip()
 
 
+def _stale_dist_pins() -> list[str]:
+    """Pinned deps whose installed project metadata still records another version.
+
+    An editable install records its requirements at install time, so a pull that
+    bumps a pin leaves pip warning `x5agent requires x5browser==<old>`. Reinstall
+    refreshes that metadata.
+    """
+    try:
+        recorded_requirements = importlib.metadata.requires("x5agent") or []
+    except importlib.metadata.PackageNotFoundError:
+        return []
+    stale: list[str] = []
+    for requirement in _declared_requirements():
+        pinned = _pinned_version(requirement)
+        if not pinned:
+            continue
+        name = _requirement_name(requirement).replace("_", "-").lower()
+        for recorded in recorded_requirements:
+            if _requirement_name(recorded).replace("_", "-").lower() != name:
+                continue
+            if _pinned_version(recorded) != pinned:
+                stale.append(f"{name} metadata {recorded.strip()} -> {pinned}")
+            break
+    return stale
+
+
 def _deps_out_of_sync() -> list[str]:
     """Declared dependencies that are missing or not at their pinned version.
 
@@ -231,6 +257,7 @@ def _deps_out_of_sync() -> list[str]:
         wanted = _pinned_version(requirement)
         if wanted and installed.lower() != wanted.lower():
             problems.append(f"{name} {installed} -> {wanted}")
+    problems.extend(_stale_dist_pins())
     return problems
 
 
