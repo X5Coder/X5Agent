@@ -333,7 +333,13 @@ async def _pump(source: Any, target: Any) -> None:
 
 
 async def handle_asset(request: Any) -> Any:
-    """Proxy the noVNC files the viewer page imports (relay web root only)."""
+    """Proxy the noVNC files the viewer page imports (relay web root only).
+
+    The body is drained chunk by chunk on purpose: `response.content.read(n)`
+    returns only what is buffered at that moment, so a real module (rfb.js is
+    several hundred KB) reached the browser truncated and the viewer died with
+    "Unexpected end of input" instead of ever drawing the stream.
+    """
     from aiohttp import ClientError, ClientSession, web
 
     relative = str(request.match_info.get("tail", "") or "")
@@ -345,7 +351,17 @@ async def handle_asset(request: Any) -> Any:
             async with session.get(url) as upstream:
                 if upstream.status != 200:
                     raise web.HTTPNotFound(text="viewer asset unavailable")
-                body = await upstream.content.read(MAX_ASSET_BYTES)
+                chunks: list[bytes] = []
+                received = 0
+                async for chunk in upstream.content.iter_chunked(64 * 1024):
+                    received += len(chunk)
+                    if received > MAX_ASSET_BYTES:
+                        raise web.HTTPRequestEntityTooLarge(
+                            MAX_ASSET_BYTES,
+                            text="viewer asset exceeds the size cap",
+                        )
+                    chunks.append(chunk)
+                body = b"".join(chunks)
                 ctype = _content_type(upstream.headers.get("Content-Type"))
     except ClientError:
         # The relay is down (a unit restarting): retryable, not a 404.

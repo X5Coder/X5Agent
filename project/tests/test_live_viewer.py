@@ -186,6 +186,51 @@ def test_asset_content_type_is_a_bare_media_type():
     assert lv._content_type(None) == "application/octet-stream"
 
 
+def test_asset_proxy_serves_the_whole_file(monkeypatch):
+    """Regression: the viewer died with "Unexpected end of input" at rfb.js:1931.
+
+    `content.read(cap)` returns only the first buffered chunk, so a several
+    hundred KB noVNC module reached the browser truncated. The proxy must drain
+    the whole upstream body (and still refuse anything past the size cap).
+    """
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from aiohttp import web
+
+    payload = b"export default function RFB() {}\n" * 8000  # ~232 KB, many chunks
+    too_big = b"x" * (lv.MAX_ASSET_BYTES + 1024)
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 (stdlib handler name)
+            body = too_big if self.path.endswith("huge.js") else payload
+            self.send_response(200)
+            self.send_header("Content-Type", "text/javascript; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):  # silence the test server
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        monkeypatch.setattr(lv, "relay_port", lambda: server.server_address[1])
+        response = _run(lv.handle_asset(
+            _request("/core/rfb.js", match_info={"tail": "core/rfb.js"})))
+        assert response.body == payload
+        assert response.content_length == len(payload)
+        assert response.content_type == "text/javascript"
+        with pytest.raises(web.HTTPRequestEntityTooLarge):
+            _run(lv.handle_asset(
+                _request("/core/huge.js", match_info={"tail": "core/huge.js"})))
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 # -- library wiring --------------------------------------------------------
 
 
