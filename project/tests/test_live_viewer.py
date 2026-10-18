@@ -233,6 +233,68 @@ def test_asset_proxy_serves_the_whole_file(monkeypatch):
         server.server_close()
 
 
+def test_websockify_echoes_the_subprotocol_the_browser_offers(
+    monkeypatch, live_tokens
+):
+    """Regression: noVNC opens the socket with ``Sec-WebSocket-Protocol: binary``.
+
+    Chrome aborts any socket whose offered subprotocol was not echoed ("Sent
+    non-empty 'Sec-WebSocket-Protocol' header but no response was received"),
+    the viewer retries forever and the user only ever sees the loading screen.
+    The gate must echo what the viewer asked for and still pass frames through.
+    """
+    import socket
+
+    import aiohttp
+    from aiohttp import web
+
+    def free_port() -> int:
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            return sock.getsockname()[1]
+
+    gate_port, relay_port = free_port(), free_port()
+    monkeypatch.setattr(lv, "relay_port", lambda: relay_port)
+    monkeypatch.setenv("X5_LIVE_VIEWER_PORT", str(gate_port))
+
+    async def echo(request):
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        async for message in ws:
+            if message.type == aiohttp.WSMsgType.BINARY:
+                await ws.send_bytes(b"echo:" + message.data)
+            elif message.type == aiohttp.WSMsgType.CLOSE:
+                break
+        return ws
+
+    async def scenario():
+        relay = web.Application()
+        relay.router.add_get("/websockify", echo)
+        relay_runner = web.AppRunner(relay, access_log=None)
+        await relay_runner.setup()
+        await web.TCPSite(relay_runner, "127.0.0.1", relay_port).start()
+        assert await lv.start_async() is True
+        try:
+            url = f"http://127.0.0.1:{gate_port}/websockify"
+            cookie = {"Cookie": f"{lv.COOKIE_NAME}={CONTROL}"}
+            async with aiohttp.ClientSession() as session:
+                async with session.ws_connect(
+                    url, protocols=("binary",), headers=cookie
+                ) as ws:
+                    assert ws.protocol == "binary"
+                    await ws.send_bytes(b"hello")
+                    frame = await ws.receive()
+                    assert frame.type == aiohttp.WSMsgType.BINARY
+                    assert frame.data == b"echo:hello"
+                with pytest.raises(aiohttp.WSServerHandshakeError):
+                    await session.ws_connect(url, protocols=("binary",))
+        finally:
+            await lv.stop_async()
+            await relay_runner.cleanup()
+
+    asyncio.run(scenario())
+
+
 # -- library wiring --------------------------------------------------------
 
 

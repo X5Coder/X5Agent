@@ -285,13 +285,27 @@ async def handle_view(request: Any) -> Any:
     return response
 
 
+def _offered_protocols(request: Any) -> tuple[str, ...]:
+    """The subprotocols the viewer asked for (noVNC always asks for ``binary``).
+
+    A browser fails any socket whose offered subprotocol was not echoed back
+    ("Sent non-empty 'Sec-WebSocket-Protocol' header but no response was
+    received") and the relay answers the handshake without selecting one, so
+    the gate has to select one itself or the viewer never connects.
+    """
+    raw = request.headers.get("Sec-WebSocket-Protocol", "")
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
 async def handle_websockify(request: Any) -> Any:
     """Proxy the VNC stream for a viewer that already passed /view."""
     from aiohttp import ClientSession, web
 
     if not authorize(request.cookies.get(COOKIE_NAME, "")):
         return _not_connect()
-    server = web.WebSocketResponse(heartbeat=30.0)
+    server = web.WebSocketResponse(
+        heartbeat=30.0, protocols=_offered_protocols(request)
+    )
     await server.prepare(request)
     try:
         async with ClientSession() as session:
