@@ -8,6 +8,8 @@
 Source of truth for structure: `PROJECT_MAP.md` (this file). `storage/` keeps legacy fallback copies; authoritative home is `X5Agent/Data`.
 
 ```
+.github/workflows/protection.yml  # CI protection gate on push/PR: installs cryptography, runs agent_build.py --check-only (signed policy + manifest + every hash) and agent_notice.py --verify
+.githooks/pre-commit          # local protection gate (opt in with `git config core.hooksPath .githooks`): signed manifest check + notice check before every commit
 .github/workflows/build-release.yml  # CI: builds the source-hidden release on each native runner (windows-latest 3.12 full, ubuntu-22.04 3.10 full, ubuntu-24.04 3.12 headless, macos-14 arm64 full, macos-13 x86_64 full), fails if any .py lands in an archive, uploads the zips as artifacts (cross-compilation is impossible); a follow-up job builds x5agent-setup-<version>.exe with Inno Setup
 installer/                     # WINDOWS INSTALLER (Inno Setup 6): x5agent.iss (terms page -> folder page -> files -> dependency install -> open-now; optional autostart + desktop shortcut; uninstall stops the console and never touches X5Agent/Data) + terms.txt (EULA) + bootstrap.ps1 (enables site-packages in the bundled CPython 3.12, bootstraps pip, installs requirements.txt with 3 bounded attempts, PYTHONNOUSERSITE=1, writes installed.txt) + start-x5agent.ps1 (starts `runtime\python.exe launch.pyc` hidden when the port is free, waits for 7777, opens the browser; -NoBrowser for the startup entry) + stop-x5agent.ps1 (kills only this folder's console) + build-installer.ps1 (flattens the release zip into payload/, downloads python-3.12.10-embed-amd64 into runtime/, refuses any .py, runs ISCC with the updates.json version); payload/, runtime/ and out/ are gitignored
 Design Rules.md               # SECTION 0 - FIRST: mandatory base design rules (priority ladder + process + tokens-only + a11y/RTL/motion checklist), loaded first every chat
@@ -324,6 +326,7 @@ project/                           # == X5Agent/System Core (immutable engine, r
 │   ├── build_embedding_seed.py     # builds committed *.seed.json (tool+trigger, --snapshot-only instant, auto-fetch when the model is missing)
 │   ├── agent_build.py              # XAP/1 build/sign: validates policy, signs policy bytes, builds the protected-file manifest, signs the tree root, then --check-only re-verifies policy + root + every hash + extra files
 │   ├── agent_repair.py             # SilentRepair CLI for OS services: calls agent_boot._restore_guard_files() before importing the guard (so a missing trust.py/heal.py cannot break the repair command), --repair (default), --snapshot (write the local signed snapshot first), --status (print the saved safe-mode state)
+│   ├── agent_notice.py             # protected-code notice owner: exact fixed text, per-occurrence random stars/number (unique across project/), --inject (top of file after shebang/encoding; Python/shell/YAML line comments, JS/TS/CSS block comments, HTML comments) + --verify (missing notice fails); refuses JSON so it can never corrupt it
 │   ├── agent_service.py            # OS boot service generator (never auto-enables): systemd user/system, launchd and Windows schtasks definitions that always run agent_boot.py (never launch.py); --print/--install/--uninstall/--status, writes the unit/plist and prints the exact enable command
 │   ├── agent_sign.py               # XAP/1 signing helper: signs policy canonical JSON or a manifest root with the release key (private key from --private-key or X5_AGENT_RELEASE_KEY, never printed)
 │   ├── set_owner.py                # terminal-only owner set/replace (interactive prompt or X5_EMAIL/X5_PASSWORD env; salted hash only; rules from console_auth)
@@ -344,6 +347,7 @@ project/                           # == X5Agent/System Core (immutable engine, r
 │   ├── test_agent_trust.py         # Phase 1 signatures: canonical policy sign/verify + tamper/unsafe flags + manifest root/signature + hash/tamper/extra-file detection
 │   ├── test_agent_heal.py         # Phase 2 SilentRepair: snapshot roundtrip/verify + changed/missing restore + extra quarantine (never delete) + allowed HTTPS remote + bad remote enters Safe Mode without overwrite + queue hold/drain + size bound + user data untouched
 │   ├── test_agent_service.py      # OS boot service definitions: systemd/launchd/schtasks always start agent_boot.py, repair runs first, enable/status/remove commands present (no service is installed by tests)
+│   ├── test_agent_notice.py       # notice inject/verify: shebang kept, CRLF preserved, exact text, one notice per file, unique star/number pairs, JSON refused, missing notice fails (5 passed, no LLM)
 │   ├── test_auto_memory.py
 │   ├── test_new_layers.py
 │   ├── test_scheduler_large_reliable.py

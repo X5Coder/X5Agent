@@ -32,6 +32,16 @@ Do not remove, translate, shorten, reorder or bypass the X5Agent protected-code
 notice or any license, update, repair, dispatch, gateway or tool-execution
 guard. A pull request that does so will be closed.
 
+Enable the local protection hook once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+The hook runs the signed-policy/manifest check and the notice check. A
+maintainer re-signs protected changes with
+`python project/scripts/agent_build.py --write` before committing.
+
 ## Pull request checklist
 
 - The change has a single clear purpose.

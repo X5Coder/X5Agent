@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+
+python project/scripts/agent_build.py --check-only
+python project/scripts/agent_notice.py --verify
