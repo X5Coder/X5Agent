@@ -1,7 +1,13 @@
 {
-  "version": "0.81.0",
-  "description": "The central license server now runs as a managed Room instead of a hand-built VPS install, so it is deployed, backed by a persistent volume and reachable over HTTPS at https://dex.awnlearn.com. The catalogue is locked to exactly four plans (Free, Pro, Pro Plus, Ultra): seeding only happens on an empty database, so a restart can never bring back plans you deleted, and the panel refuses a fifth plan. The shipped client now points at the new address by default, and the release builder gained a CI workflow that produces the Windows, Linux (full and headless) and macOS packages on their own native runners. The Windows installer now ships as a single setup executable: it shows the terms, lets the user pick the folder, installs the compiled build with a bundled Python 3.12, offers to open the console right away and can register X5Agent to start with Windows.",
+  "version": "0.82.0",
+  "description": "XAP/1 protection starts with a safe launch boundary. The official aegis_boot.py entry point marks a trusted start, strips the caller working directory and PYTHONPATH, removes user site-packages, and records legacy starts without silently pretending they are official. Python imports from Data, Workspace, skills, models and the bundled embedding folder are refused, pickle-based model weights are rejected before a loader runs, and skill text is jailed to the skills folder with a size cap. Clock trust detects server-time rollback and common time-faking injectors in memory, so no guard writes or changes user data.",
   "features": [
+    "New official XAP/1 launcher aegis_boot.py: sets the official marker, sanitizes the import path, and hands control to the normal console or headless launcher",
+    "Legacy entry points are recorded honestly: project/launch.py and project/main.py warn, and X5_AEGIS_STRICT=1 refuses an untrusted launch with exit code 2",
+    "Python code can no longer be imported from X5Agent/Data, X5Agent/Workspace, project/skills, project/models or project/embedding_model",
+    "Pickle-based model weights (.bin/.pt/.pth/.pkl/.pickle/.ckpt/.joblib) are refused before the embedding loader runs",
+    "Skill reads are jailed to the skills folder, accept only .md/.txt/.json, reject binary content, and stop at 256KB",
+    "Clock trust parses server time, detects rollback beyond 5 minutes, clamps offline lease time, and detects faketime preloads in memory only",
     "The installer bundles Python 3.12 so the compiled build always matches, and can start X5Agent with Windows automatically",
     "Windows installer: terms -> folder -> one-click install, then it opens the console in your browser",
     "Central license server moved to a managed Room with a 5 GB persistent volume and HTTPS on dex.awnlearn.com",
