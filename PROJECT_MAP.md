@@ -353,6 +353,7 @@ project/                           # == X5Agent/System Core (immutable engine, r
 │   └── test_backup_restore.py        # backup zip (Data+Workspace+skills+manifest) + restore zip-slip/non-zip reject + Workspace roundtrip + skills roundtrip + backup-info meta + studios block/open/pages-launch/parallel-turns + chat prune never touches studios (no LLM)
 ├── docs/
 │   ├── README.md
+│   ├── INSTALL_SERVER.md               # Ubuntu server install: compiled release per Python ABI (22.04/3.12 matrix), venv + requirements + `python launch.pyc`, systemd unit, firewall, update-in-place that keeps X5Agent/, and the private-repo source path
 │   └── SUBSCRIPTION_FLOW.md            # answers: device fingerprint on signup (yes), agreed-scope checklist (done vs deferred), one-command install
 ├── .env
 ├── .env.example
