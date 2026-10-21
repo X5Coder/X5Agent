@@ -664,7 +664,7 @@ def _run_parts(channel: str, chat: str, parts: list, cancel) -> None:
             try:
                 from gateway.whatsapp import adapter as _wa
 
-                seen_ids: set[str] = set()
+                seen_ids = set()
                 for part in parts[:_MaxParts]:
                     mid = str((part or {}).get("message_id") or "")[:128]
                     if mid and mid not in seen_ids:
@@ -704,6 +704,19 @@ def _run_parts_inner(channel: str, chat: str, parts: list, cancel, opts: dict | 
         body += f"\n(+{extra} more omitted)"
     if not body:
         _tell(channel, chat, "Couldn't read that — try again.")
+        return
+    # License gate (same rule as the console + loop): answer immediately with
+    # the fixed notice instead of bouncing off a refused dashboard stream.
+    try:
+        from core.licensing import license_service as _license
+
+        _license_ok, _license_note = _license.local_gate()
+        if not _license_ok:
+            _tell(channel, chat, _license_note or _license.blocked_message())
+            return
+    except Exception:
+        _tell(channel, chat,
+              "License check unavailable. Open Settings → License and retry.")
         return
     seen: dict = {}
     # ALWAYS mirror through the shared site session first (the Agent page

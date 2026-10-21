@@ -6,7 +6,7 @@
 "use strict";
 
 import { openModal, closeModal, toast } from "./ui.js?v=13";
-import { navigate } from "./navigation.js?v=14";
+import { navigate } from "./navigation.js?v=15";
 import { onPush } from "./events.js?v=7";
 import { remoteLiveUrl } from "./live-url.js?v=2";
 
@@ -2447,6 +2447,22 @@ async function sendStream(value, attachments, thinking, skipHistoryIds, isResume
     if (body409 && body409.retry) throw { retry: true };
     return false;
   }
+  if (res && res.status === 403) {
+    // License gate: answer with the fixed server message (never "Error:"),
+    // keep the task out of the history and let the user fix it in Settings.
+    let body403 = {};
+    try { body403 = await res.json(); } catch (_) { body403 = {}; }
+    if (body403 && body403.license_blocked) {
+      activeRun = null;
+      try { thinking.remove(); } catch (_) {}
+      activeThinking = null;
+      try { clearStoppedTask(); } catch (_) {}
+      const { el: blockedEl, p: blockedP } = appendAssistantShell();
+      blockedP.textContent = String(body403.error || "License required — open the Subscription page.");
+      scrollToBottom();
+      return true;
+    }
+  }
   if (!res || !res.ok || !res.body) {
     // Stale resume (the stopped task is no longer trailing — a newer task
     // superseded it): drop the dead pill with a clear toast, never an error
@@ -2470,6 +2486,12 @@ async function sendStream(value, attachments, thinking, skipHistoryIds, isResume
   // (wave stops, collapsed) and the reply sits underneath.
   let shell = null;
   let shellP = null;
+  // reply_assembly (long replies in parts): the server relays every accepted
+  // part live. Parts are appended into the SAME place the final answer will
+  // live and re-rendered instantly, so the user watches the reply grow; at
+  // done the final rich text replaces it with no retyping flash.
+  let livePartsEl = null;
+  let livePartsRaw = "";
   const collected = [];
   const liveItems = new Map();
   // Streamed text buffered by loop step (never shown live): a step that
@@ -2511,6 +2533,35 @@ async function sendStream(value, attachments, thinking, skipHistoryIds, isResume
       if (typeof step === "number") {
         tokenSteps.set(step, (tokenSteps.get(step) || "") + delta);
       }
+    } catch (_) {}
+  }
+
+  function appendReplyPart(msg) {
+    // One accepted long-reply part: show it NOW, exactly where the final
+    // answer goes (fake stream). The whole accumulated text is re-rendered
+    // instantly so Markdown spanning two parts still reads correctly.
+    try {
+      const text = String(msg?.text || "");
+      if (!text) return;
+      ensureShell();
+      if (!livePartsEl || !livePartsEl.isConnected) {
+        livePartsEl = document.createElement("div");
+        livePartsEl.className = "msg-live-parts";
+        livePartsEl.setAttribute("dir", "auto");
+        try {
+          shellP.parentNode.insertBefore(livePartsEl, shellP);
+          shellP.remove();
+        } catch (_) {
+          try { shell.querySelector(".msg-content")?.appendChild(livePartsEl); } catch (_) {}
+        }
+      }
+      // Same join rule as the engine: add a separator only when the boundary
+      // would otherwise glue text together.
+      if (livePartsRaw && !/[\s]$/.test(livePartsRaw) && !/^\s/.test(text)) livePartsRaw += "\n\n";
+      livePartsRaw += text;
+      livePartsEl.innerHTML = formatRich(livePartsRaw);
+      try { linkifyWorkspacePaths(livePartsEl); } catch (_) {}
+      scrollToBottom();
     } catch (_) {}
   }
 
@@ -2654,6 +2705,7 @@ async function sendStream(value, attachments, thinking, skipHistoryIds, isResume
         if (msg2?.type === "event_start") appendStepStart({ event: msg2.event, key: msg2.key, reason: msg2.reason, loopStep: msg2.step });
         else if (msg2?.type === "event") appendStep({ event: msg2.event, output: msg2.output, key: msg2.key, media: msg2.media, reason: msg2.reason, shot: msg2.shot, loopStep: msg2.step });
         else if (msg2?.type === "token") appendToken(msg2.step, msg2.text);
+        else if (msg2?.type === "reply_part") appendReplyPart(msg2);
         else if (msg2?.type === "live") {
           showLiveLink(msg2.live);
         }
@@ -2682,6 +2734,7 @@ async function sendStream(value, attachments, thinking, skipHistoryIds, isResume
             } catch (_) {}
             shell = null;
           }
+          livePartsEl = null;
           try {
             settleThinkingStopped(thinking);
           } catch (_) {}
@@ -2724,6 +2777,7 @@ async function sendStream(value, attachments, thinking, skipHistoryIds, isResume
               try { thinking.remove(); } catch (_) {}
               try { if (shell) shell.remove(); } catch (_) {}
               shell = null;
+              livePartsEl = null;
               doneReceived = true;
               activeThinking = null;
               activeRun = null;
@@ -2754,14 +2808,29 @@ async function sendStream(value, attachments, thinking, skipHistoryIds, isResume
             try {
               thinking.remove();
             } catch (_) {}
-            const holder = document.createElement("div");
-            shellP = holder;
-            try {
-              content?.appendChild(holder);
-            } catch (_) {
-              shell.appendChild(holder);
+            // Long reply already delivered part-by-part: render the final
+            // rich text IN PLACE (instant) — retyping would blank the answer
+            // the user just watched arrive and replay it for long seconds.
+            let holder = null;
+            if (livePartsEl && livePartsEl.isConnected) {
+              holder = livePartsEl;
+              try {
+                holder.innerHTML = formatRich(replyText);
+                try { linkifyWorkspacePaths(holder); } catch (_) {}
+              } catch (_) {
+                await typeRich(holder, replyText);
+              }
+            } else {
+              holder = document.createElement("div");
+              try {
+                content?.appendChild(holder);
+              } catch (_) {
+                shell.appendChild(holder);
+              }
+              await typeRich(holder, replyText);
             }
-            await typeRich(holder, replyText);
+            shellP = holder;
+            livePartsEl = null;
             appendFinalImages(shell, msg2.images);
             appendFinalVoice(shell, msg2.audio);
             appendFinalFiles(shell, msg2.files);
@@ -2813,6 +2882,7 @@ async function sendStream(value, attachments, thinking, skipHistoryIds, isResume
             thinking.remove();
             if (shell) shell.remove();
           } catch (_) {}
+          livePartsEl = null;
           try { hideQuestionCard(); } catch (_) {}
           try { clearPendingStored(); } catch (_) {}
           activeThinking = null;
@@ -2820,6 +2890,7 @@ async function sendStream(value, attachments, thinking, skipHistoryIds, isResume
           const { el: errEl, p: perr } = appendAssistantShell();
           perr.textContent =
             `Error: ${[msg2.error, msg2.detail].filter(Boolean).join(" — ") || "request failed"}`;
+          if (msg2.needs_model) appendModelConnectButton(errEl, msg2.needs_kind);
           scrollToBottom();
           turnResult = true;
           return;
@@ -2966,6 +3037,9 @@ async function sendBlocking(value, attachments, thinking, skipHistoryIds, isResu
     activeThinking = null;
     const { el: errEl, p } = appendAssistantShell();
     p.textContent = `Error: ${err instanceof Error ? err.message : String(err)}`;
+    // No model connected: offer the one action that fixes it — AI Models with
+    // the connect dialog already open (same shortcut as the pause strip).
+    if (err && err.needsModel) appendModelConnectButton(errEl, err.needsKind);
     scrollToBottom();
   }
 }
@@ -3820,7 +3894,7 @@ async function ensureSttModel() {
     toast("Connect a voice-to-text model first");
   } catch (_) {}
   try {
-    const { navigate } = await import("./navigation.js?v=14");
+    const { navigate } = await import("./navigation.js?v=15");
     navigate("ai-models");
   } catch (_) {}
   try {
@@ -7343,6 +7417,8 @@ async function onChatDonePush(data) {
         if (lastUserEl && !lastUserEl.dataset.mid) lastUserEl.remove();
         lastUserEl = null;
       } catch (_) {}
+      catchupPartsEl = null;
+      catchupPartsRaw = "";
       loadHistory().catch(() => {});
       return;
     }
@@ -7366,6 +7442,8 @@ function onChatPush(data) {
         // Follow this channel-driven run live: same Working block + steps
         // as a local run, settled by the gateway chat_done frame.
         catchupLiveItems = new Map();
+        catchupPartsEl = null;
+        catchupPartsRaw = "";
         catchupResume = true;
       }
       return;
@@ -7413,6 +7491,10 @@ let catchupResume = false;
 // as new "run" pushes arrive. Rendering is idempotent (keyed step items), so a
 // frame seen twice (replay + push) never duplicates a step.
 let catchupLiveItems = new Map();
+// Long-reply parts replayed by a refreshed tab: the visible reply grows under
+// the catch-up Working block until chat_done swaps in the persisted history.
+let catchupPartsEl = null;
+let catchupPartsRaw = "";
 // During bulk replay skips per-frame scrolling (that was the refresh hang:
 // 300 frames × forced layout). One scroll lands at the end instead.
 let replayQuiet = false;
@@ -7498,11 +7580,33 @@ function renderRunFrame(frame) {
       return;
     }
     if (type === "live_end") clearLiveUI();
+    if (type === "reply_part") {
+      const text = String(frame.text || "");
+      const host = activeThinking;
+      if (!text || !host) return;
+      if (!catchupPartsEl || !catchupPartsEl.isConnected) {
+        catchupPartsEl = document.createElement("div");
+        catchupPartsEl.className = "msg-live-parts";
+        catchupPartsEl.setAttribute("dir", "auto");
+        const content = host.querySelector(":scope > .msg-content");
+        try { (content || host).appendChild(catchupPartsEl); } catch (_) {}
+      }
+      if (catchupPartsRaw && !/[\s]$/.test(catchupPartsRaw) && !/^\s/.test(text)) catchupPartsRaw += "\n\n";
+      catchupPartsRaw += text;
+      try {
+        catchupPartsEl.innerHTML = formatRich(catchupPartsRaw);
+        try { linkifyWorkspacePaths(catchupPartsEl); } catch (_) {}
+      } catch (_) {}
+      if (!replayQuiet) scrollToBottom();
+      return;
+    }
   } catch (_) {}
 }
 
 function replayRunFrames(frames) {
   catchupLiveItems = new Map();
+  catchupPartsEl = null;
+  catchupPartsRaw = "";
   if (!Array.isArray(frames) || !frames.length) return;
   // Cap: the server buffers 300, but rendering hundreds of step cards in one
   // go hangs the tab — the last 150 carry the live state.
@@ -7839,6 +7943,24 @@ function makeActBtn(icon, label, fn, danger) {
     fn();
   });
   return b;
+}
+
+function appendModelConnectButton(shell, kind) {
+  // The error stays a real error; this only adds the fix next to it.
+  try {
+    const wrap = document.createElement("div");
+    wrap.className = "needs-model-wrap";
+    const note = document.createElement("p");
+    note.className = "needs-model-note";
+    note.textContent = "Connect a model, then send your message again.";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "needs-model-btn glass";
+    btn.textContent = "Connect a model";
+    btn.addEventListener("click", () => openModelPage(kind || "text"));
+    wrap.append(note, btn);
+    (shell || document.createElement("div")).appendChild(wrap);
+  } catch (_) {}
 }
 
 function openModelPage(kind) {

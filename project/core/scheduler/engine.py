@@ -245,6 +245,15 @@ def check_and_execute_due_jobs(api_key: str | None = None, model: str | None = N
     jobs = _load_jobs()
     if not jobs:
         return []
+    # License gate: no scheduled run (and no branch-session writes) while the
+    # subscription is blocked. Due jobs stay due and run once it is restored.
+    try:
+        from core.licensing import license_service
+
+        if not license_service.local_gate()[0]:
+            return []
+    except Exception:
+        return []
     now = datetime.now(timezone.utc)
     # Pre-filter due jobs and handle completed/limits synchronously
     due_indices: list[int] = []

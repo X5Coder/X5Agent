@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<!-- X5Agent console gate: sign-in ONLY. The owner is terminal-created
-     (install / server prompt) — the browser can NEVER create it.
+<!-- X5Agent console gate: first run creates the owner, then it is sign-in only.
+     First run (no owner record) = "Create your account" (POST /api/auth/setup,
+     create-once); afterwards = sign-in (POST /api/auth/login, cookie session).
      Self-contained (inline css/js/SVG, no extra files) so the auth gate needs
      no exemptions — only /login.html is public. English, full-screen, no card
      template: LEFT shows the agent console itself (same look as the app),
@@ -114,6 +115,12 @@
     80% { transform: rotate(-4deg); }
   }
   label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 22px 0 8px; }
+  /* first-run note (rules shown once, before the fields) */
+  .hint {
+    font-size: 12.5px; line-height: 1.5; color: var(--text-tertiary);
+    margin-top: 10px; max-width: 340px;
+  }
+  .hint[hidden] { display: none; }
   /* Dashboard white-glass credential fields (same as the app templates):
      white gradient + blur + bright top edge. Focus only brightens the
      border like glass catching light — never a blue ring. */
@@ -243,6 +250,7 @@
         <div class="t"><span class="nx">X5</span>Agent</div>
       </div>
       <h1 id="title">Hi, sir! <span class="wave">👋</span></h1>
+      <p class="hint" id="hint" hidden></p>
       <form id="form" novalidate>        <label for="email">Email</label>
         <div class="field" id="emailField">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
@@ -256,6 +264,13 @@
             <svg id="eyeOpen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
             <svg id="eyeShut" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-2.16 3.19"/><path d="M6.61 6.61A17.5 17.5 0 0 0 2 12s3.5 7 10 7a10.7 10.7 0 0 0 4.39-.92"/><path d="m2 2 20 20"/></svg>
           </button>
+        </div>
+        <div id="pw2Wrap" hidden>
+          <label for="pw2">Confirm password</label>
+          <div class="field" id="pw2Field">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <input id="pw2" type="password" autocomplete="new-password" placeholder="••••••••">
+          </div>
         </div>
         <div id="err"></div>
         <button class="go" id="go" type="submit"><span class="spinner"></span><span id="goText">Connect</span></button>
@@ -272,6 +287,21 @@
   var go = document.getElementById("go");
   var goText = document.getElementById("goText");
   var title = document.getElementById("title");
+  var hint = document.getElementById("hint");
+  var pw2Wrap = document.getElementById("pw2Wrap");
+  var pw2 = document.getElementById("pw2");
+  var pw2Field = document.getElementById("pw2Field");
+  // "setup" = first run (no owner yet) -> create it once; "login" = normal.
+  var mode = "login";
+  function toSetup() {
+    mode = "setup";
+    title.textContent = "Create your account";
+    goText.textContent = "Create account";
+    hint.textContent = "First run only: this account owns this console. " +
+      "Use a Gmail address and an English password of at least 8 characters.";
+    hint.hidden = false;
+    pw2Wrap.hidden = false;
+  }
   function fail(msg) { err.textContent = msg; err.classList.add("show"); }
   function clearFail() { err.textContent = ""; err.classList.remove("show"); }
   function setLoading(on) {
@@ -296,12 +326,13 @@
     if (!n) { pwField.className = "field"; return; }
     pwField.className = "field " + (n >= 8 ? "ok" : "bad");
   });
+  pw2.addEventListener("input", function () {
+    if (!pw2.value.length) { pw2Field.className = "field"; return; }
+    pw2Field.className = "field " + (pw2.value === pw.value ? "ok" : "bad");
+  });
   fetch("/api/auth/status", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (d) {
-    // Sign-in only: the owner is terminal-created. No owner yet -> tell the
-    // user to create it in the terminal (the browser can never create it).
-    if (d && d.owner_missing) {
-      fail("No owner yet — create it in the terminal, then sign in here.");
-    }
+    // No owner record yet = the very first run: offer creation once.
+    if (d && d.owner_missing) { toSetup(); return; }
     title.innerHTML = "Hi, sir! <span class=\"wave\">👋</span>";
     goText.textContent = "Connect";
   }).catch(function () { fail("Could not reach the server"); });
@@ -311,18 +342,40 @@
     var em = email.value.trim();
     var p1 = pw.value;
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { fail("Enter a valid email address"); email.focus(); return; }
+    if (mode === "setup" && !/^[^@\s]+@gmail\.com$/i.test(em)) {
+      fail("Use a Gmail address (name@gmail.com)"); email.focus(); return;
+    }
     if (p1.length < 8) { fail("Password too short (8 characters minimum)"); pw.focus(); return; }
+    if (mode === "setup" && !/^[\x20-\x7e]+$/.test(p1)) {
+      fail("Use English letters, digits and symbols only"); pw.focus(); return;
+    }
+    if (mode === "setup" && p1 !== pw2.value) {
+      fail("Passwords do not match"); pw2.focus(); return;
+    }
     setLoading(true);
-    fetch("/api/auth/login", {
+    fetch(mode === "setup" ? "/api/auth/setup" : "/api/auth/login", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: em, password: p1 })
     }).then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); }).then(function (x) {
       if (x.s === 200 && x.d && x.d.ok) {
         // One-way login: replace history so Back never returns here.
         // Session = HttpOnly cookie only (set by the server), no tokens.
-        goText.textContent = "Connected ✓";
-        try { location.replace("/"); } catch (_) { location.href = "/"; }
+        // First run continues on the plan page (the server sends `next`).
+        goText.textContent = mode === "setup" ? "Created ✓" : "Connected ✓";
+        var next = (mode === "setup" && x.d.next) ? x.d.next : "/";
+        try { location.replace(next); } catch (_) { location.href = next; }
         return; }
+      if (x.s === 409 && mode === "setup") {
+        // Someone (another tab/device) already created it: switch to sign-in.
+        mode = "login";
+        title.innerHTML = "Hi, sir! <span class=\"wave\">👋</span>";
+        goText.textContent = "Connect";
+        hint.hidden = true;
+        pw2Wrap.hidden = true;
+        fail("This console already has an owner — sign in instead.");
+        setLoading(false);
+        return;
+      }
       fail((x.d && x.d.error) || "Connection failed");
       setLoading(false);
     }).catch(function () { fail("Could not reach the server"); setLoading(false); });

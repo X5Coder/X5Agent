@@ -1,0 +1,17 @@
+{
+  "name": "reply_assembly",
+  "description": "Deliver one very long reply to the user in ordered parts, shown live as you write them. Call it once per part with the part's final text and an action: action=\"next\" while more parts follow, action=\"stop\" on the last part. Each accepted part appears to the user immediately (as if streamed) and the saved reply is all parts joined in order, so never repeat earlier text and never write the reply outside this tool. Use it for long writing (articles, reports, stories, documentation, big explanations); short answers need no tool.",
+  "inputs": {
+    "part": {
+      "type": "string",
+      "required": true,
+      "description": "This part's final text, exactly as the user should read it (Markdown allowed, no 'Part N' heading). Max 30000 chars; keep every part as large as a normal message."
+    },
+    "action": {
+      "type": "string",
+      "required": true,
+      "enum": ["next", "stop"],
+      "description": "next = more parts follow, continue immediately with the next part; stop = this is the final part, the reply is complete."
+    }
+  }
+}

@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<!-- X5Agent first-run plan page: full page, NO sidebar, Claude-style glass plans.
+     Shown once, right after the account is created (the server redirects every
+     console page here until a plan is stored on the license server). Picking a
+     plan stores it and opens the agent page; the placeholders are the exact
+     size of a real card so nothing jumps when the plans land. Self-contained
+     (inline css/js) so the gate needs no exemptions. -->
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1a1a1a">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='black'/%3E%3Crect%20x='17'%20y='17'%20width='30'%20height='30'%20rx='7'%20fill='white'/%3E%3C/svg%3E" />
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='black'/%3E%3Crect%20x='17'%20y='17'%20width='30'%20height='30'%20rx='7'%20fill='white'/%3E%3C/svg%3E" />
+<title>X5Agent — Choose your plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1a1a1a;
+    --menu: #212121;
+    --nav: #121212;
+    --border: rgba(255, 255, 255, 0.09);
+    --text: #ededed;
+    --text-2: #a3a3a3;
+    --text-3: #737373;
+    --blue: #3b9eff;
+    --red: #f04438;
+    --green: #34c77b;
+    --glass-bg: linear-gradient(165deg, rgba(255,255,255,0.075), rgba(255,255,255,0.024) 42%, rgba(255,255,255,0.045) 100%);
+    --glass-border: rgba(255, 255, 255, 0.13);
+    --glass-blur: blur(22px) saturate(1.5);
+    --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    --glass-lo: inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+    --glass-sh: 0 10px 34px rgba(0, 0, 0, 0.36);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100%; }
+  body {
+    color: var(--text); font-family: "Inter", system-ui, "Segoe UI", sans-serif;
+    background:
+      radial-gradient(900px 520px at 50% -10%, rgba(59,158,255,.12) 0%, transparent 62%),
+      var(--bg);
+  }
+  a { color: var(--blue); text-decoration: none; }
+  /* ---------- top bar: brand only (no sidebar, ever) ---------- */
+  .top {
+    display: flex; align-items: center; gap: 16px;
+    padding: 20px clamp(18px, 5vw, 56px);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark {
+    width: 36px; height: 36px; border-radius: 10px; background: #000;
+    border: 1px solid rgba(255,255,255,.14);
+    display: flex; align-items: center; justify-content: center; flex: none;
+  }
+  .brand-mark svg { width: 19px; height: 19px; }
+  .brand .t { font-family: "Space Grotesk", "Inter", sans-serif; font-weight: 700; font-size: 18px; }
+  .brand .t .nx { color: var(--blue); }
+  /* ---------- head ---------- */
+  .page { max-width: 1180px; margin: 0 auto; padding: 10px clamp(18px, 5vw, 56px) 72px; }
+  .head { text-align: center; margin: 30px auto 40px; max-width: 660px; }
+  .head h1 {
+    font-family: "Space Grotesk", "Inter", sans-serif; font-weight: 700;
+    font-size: clamp(30px, 4.4vw, 44px); letter-spacing: -.8px; line-height: 1.12;
+  }
+  .head p { margin-top: 14px; font-size: 15.5px; line-height: 1.65; color: var(--text-2); }
+  /* ---------- plans grid: stacked (one column) on phones ---------- */
+  .plans { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+  @media (max-width: 1180px) { .plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  /* [hidden] must beat display:grid, or the loading skeleton stays on screen. */
+  .plans[hidden] { display: none; }
+  .plan {
+    position: relative; display: flex; flex-direction: column;
+    min-height: 100%; padding: 22px 20px 20px; border-radius: 18px;
+    background: var(--glass-bg), var(--menu);
+    -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-hi), var(--glass-lo), var(--glass-sh);
+    animation: riseIn .45s cubic-bezier(.22,.61,.36,1) both;
+  }
+  .plan:nth-child(2) { animation-delay: .06s; }
+  .plan:nth-child(3) { animation-delay: .12s; }
+  .plan.recommended {
+    border-color: rgba(59,158,255,.42);
+    box-shadow: var(--glass-hi), var(--glass-lo), var(--glass-sh),
+                0 0 0 1px rgba(59,158,255,.18), 0 14px 46px rgba(59,158,255,.10);
+  }
+  @keyframes riseIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: none; }
+  }
+  .badge {
+    position: absolute; top: 18px; right: 18px;
+    font-size: 11px; font-weight: 600; letter-spacing: .04em;
+    padding: 5px 10px; border-radius: 999px; color: #cfd8e3;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.16);
+  }
+  .badge.blue { color: #cfe6ff; background: rgba(59,158,255,.14); border-color: rgba(59,158,255,.4); }
+  .plan-mark {
+    width: 48px; height: 48px; border-radius: 13px; background: #000;
+    border: 1px solid rgba(255,255,255,.13);
+    display: flex; align-items: center; justify-content: center; margin-bottom: 18px;
+  }
+  .plan-mark svg { width: 22px; height: 22px; }
+  .plan h2 { font-family: "Space Grotesk", "Inter", sans-serif; font-size: 18px; font-weight: 600; letter-spacing: -.3px; }
+  .price { margin-top: 16px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
+  .price .amount { font-family: "Space Grotesk", "Inter", sans-serif; font-size: 30px; font-weight: 700; letter-spacing: -1px; }
+  .price .per { font-size: 12.5px; color: var(--text-3); line-height: 1.45; }
+  .cta {
+    position: relative; width: 100%; height: 48px; margin-top: 18px; padding: 0 40px 0 18px;
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    border-radius: 13px; cursor: pointer; font: inherit; font-size: 14px; font-weight: 600;
+    letter-spacing: .01em;
+    color: #f6f8fb;
+    background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.045) 55%, rgba(255,255,255,.08)), rgba(30,30,30,.9);
+    border: 1px solid rgba(255,255,255,.22);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.28), 0 6px 18px rgba(0,0,0,.32);
+    transition: border-color .18s ease, transform .18s ease, background .18s ease, box-shadow .18s ease;
+  }
+  .cta::after {
+    content: ""; position: absolute; right: 17px; top: 50%;
+    width: 7px; height: 7px; margin-top: -5px;
+    border-right: 1.8px solid rgba(255,255,255,.62);
+    border-bottom: 1.8px solid rgba(255,255,255,.62);
+    transform: rotate(-45deg);
+    transition: transform .18s ease, border-color .18s ease;
+  }
+  .cta:hover:not(:disabled) {
+    border-color: rgba(255,255,255,.38);
+    background: linear-gradient(180deg, rgba(255,255,255,.2), rgba(255,255,255,.06) 55%, rgba(255,255,255,.1)), rgba(34,34,34,.92);
+    transform: translateY(-1px);
+  }
+  .cta:hover:not(:disabled)::after { transform: translateX(3px) rotate(-45deg); border-color: #fff; }
+  .cta:active:not(:disabled) { transform: translateY(0) scale(.995); }
+  .cta:disabled { opacity: .55; cursor: default; }
+  .cta:disabled::after { display: none; }
+  .cta:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59,158,255,.35), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .note { margin-top: 11px; text-align: center; font-size: 11px; color: var(--text-3); }
+  .note.is-save { color: var(--green); }
+  .rule { height: 1px; margin: 18px 0 15px; background: var(--border); }
+  .features { list-style: none; display: flex; flex-direction: column; gap: 9px; }
+  .features li { position: relative; padding-left: 22px; font-size: 12.5px; line-height: 1.5; color: #d8d8d8; }
+  .features li svg { position: absolute; left: 0; top: 3px; width: 15px; height: 15px; color: var(--green); }
+  .spinner {
+    display: none; width: 17px; height: 17px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
+    animation: spin .8s linear infinite;
+  }
+  .cta.loading .spinner { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* ---------- placeholders: EXACTLY the size of a real card ---------- */
+  .plan.is-skel { animation: none; pointer-events: none; }
+  .skel-block {
+    border-radius: 7px;
+    background: linear-gradient(100deg, rgba(255,255,255,.035) 30%, rgba(255,255,255,.075) 50%, rgba(255,255,255,.035) 70%);
+    background-size: 220% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+  .plan.is-skel .skel-mark { width: 48px; height: 48px; border-radius: 13px; margin-bottom: 18px; }
+  .plan.is-skel .skel-title { height: 21px; width: 42%; }
+  .plan.is-skel .skel-price { height: 34px; width: 58%; margin-top: 16px; }
+  .plan.is-skel .skel-cta { height: 48px; margin-top: 18px; border-radius: 13px; }
+  .plan.is-skel .skel-note { height: 12px; width: 52%; margin: 12px auto 0; }
+  .plan.is-skel .skel-rule { height: 1px; margin: 18px 0 15px; }
+  .plan.is-skel .skel-feature { height: 16px; margin-bottom: 15px; }
+  .plan.is-skel .skel-feature.short { width: 72%; }
+  @keyframes shimmer { from { background-position: 130% 0; } to { background-position: -30% 0; } }
+  /* ---------- states ---------- */
+  .panel {
+    max-width: 620px; margin: 26px auto 0; padding: 26px 26px 24px; border-radius: 18px;
+    background: var(--glass-bg), var(--menu);
+    -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-hi), var(--glass-lo), var(--glass-sh);
+  }
+  .panel[hidden] { display: none; }
+  .panel h3 { font-family: "Space Grotesk", "Inter", sans-serif; font-size: 18px; font-weight: 600; }
+  .panel p { margin-top: 9px; font-size: 13.5px; line-height: 1.65; color: var(--text-2); }
+  .panel .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+  .panel .row a, .panel .row button {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 42px; padding: 0 20px; border-radius: 999px; font: inherit; font-size: 13.5px;
+    font-weight: 600; cursor: pointer; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.07); color: #fff;
+  }
+  .panel .row a { background: var(--blue); border-color: rgba(59,158,255,.7); }
+  .panel .row button:hover { border-color: rgba(255,255,255,.34); }
+  .field {
+    display: flex; align-items: center; gap: 12px; height: 50px; padding: 0 16px;
+    border-radius: 12px; border: 1px solid rgba(255,255,255,.15);
+    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+  }
+  .field + .field { margin-top: 12px; }
+  .field input {
+    flex: 1; min-width: 0; border: 0; background: transparent; outline: none;
+    color: var(--text); font: inherit; font-size: 15px; padding: 12px 0;
+  }
+  .field input::placeholder { color: var(--text-3); }
+  .error {
+    display: none; margin-top: 16px; padding: 12px 14px; border-radius: 11px;
+    font-size: 13px; line-height: 1.6; color: #fda4af;
+    background: rgba(240,68,56,.10); border: 1px solid rgba(240,68,56,.4);
+  }
+  .error.show { display: block; animation: errIn .34s cubic-bezier(.22,.61,.36,1) both; }
+  @keyframes errIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: none; }
+  }
+  @media (max-width: 760px) {
+    .top { padding: 16px 18px; }
+    .head { margin: 14px auto 26px; text-align: left; }
+    .head p { font-size: 14.5px; }
+    .plans { grid-template-columns: 1fr; gap: 14px; }
+    .plan { padding: 22px 20px 20px; border-radius: 16px; }
+    .page { padding-bottom: 48px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .plan, .error.show { animation: none; }
+    .plan.is-skel .skel-block { animation: none; }
+  }
+</style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><filter id="mkGlow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="1.6" result="b"><animate attributeName="stdDeviation" values="1.2;2.8;1.2" dur="2.2s" repeatCount="indefinite"/></feGaussianBlur><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><rect x="6" y="6" width="20" height="20" rx="5" fill="#fff" filter="url(#mkGlow)"/></svg>
+      </div>
+      <div class="t"><span class="nx">X5</span>Agent</div>
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="head">
+      <h1>Choose your plan</h1>
+      <p>Pick the plan you want to use. You can change it at any time from the subscription page.</p>
+    </div>
+
+    <div class="plans" id="plansLoading" aria-hidden="true">
+      <article class="plan is-skel">
+        <div class="skel-block skel-mark"></div>
+        <div class="skel-block skel-title"></div>
+        <div class="skel-block skel-price"></div>
+        <div class="skel-block skel-cta"></div>
+        <div class="skel-block skel-note"></div>
+        <div class="skel-block skel-rule"></div>
+        <div class="skel-block skel-feature"></div>
+        <div class="skel-block skel-feature"></div>
+        <div class="skel-block skel-feature"></div>
+        <div class="skel-block skel-feature"></div>
+        <div class="skel-block skel-feature short"></div>
+      </article>
+      <article class="plan is-skel">
+        <div class="skel-block skel-mark"></div>
+        <div class="skel-block skel-title"></div>
+        <div class="skel-block skel-price"></div>
+        <div class="skel-block skel-cta"></div>
+        <div class="skel-block skel-note"></div>
+        <div class="skel-block skel-rule"></div>
+        <div class="skel-block skel-feature"></div>
+        <div class="skel-block skel-feature"></div>
+        <div class="skel-block skel-feature"></div>
+        <div class="skel-block skel-feature"></div>
+        <div class="skel-block skel-feature short"></div>
+      </article>
+      <article class="plan is-skel">
+        <div class="skel-block skel-mark"></div>
+        <div class="skel-block skel-title"></div>
+        <div class="skel-block skel-price"></div>
+        <div class="skel-block skel-cta"></div>
+        <div class="skel-block skel-note"></div>
+        <div class="skel-block skel-rule"></div>
+        <div class="skel-block skel-feature"></div>
+        <div class="skel-block skel-feature"></div>
+        <div class="skel-block skel-feature"></div>
+        <div class="skel-block skel-feature"></div>
+        <div class="skel-block skel-feature short"></div>
+      </article>
+    </div>
+
+    <section class="plans" id="plans" hidden></section>
+
+    <div class="error" id="err"></div>
+
+    <!-- the license session was lost (wiped state / another device): sign in -->
+    <section class="panel" id="authPanel" hidden>
+      <h3>Sign in to your license account</h3>
+      <p>The plan is stored on your license account. Sign in again to continue.</p>
+      <form id="authForm" style="margin-top:16px">
+        <div class="field"><input id="authEmail" type="email" autocomplete="username" placeholder="you@gmail.com" required></div>
+        <div class="field"><input id="authPw" type="password" autocomplete="current-password" placeholder="Password" required></div>
+        <div class="row"><button type="submit" id="authGo">Sign in</button></div>
+      </form>
+    </section>
+  </main>
+
+<script>
+(function () {
+  "use strict";
+  var PLANS = [];
+
+  var $ = function (id) { return document.getElementById(id); };
+  var errBox = $("err");
+  var plansBox = $("plans");
+  var loadingBox = $("plansLoading");
+  var authPanel = $("authPanel");
+
+  function fail(msg) {
+    errBox.textContent = msg || "Something went wrong.";
+    errBox.classList.add("show");
+  }
+  function clearFail() {
+    errBox.textContent = "";
+    errBox.classList.remove("show");
+  }
+  function money(cents, currency) {
+    var n = (Number(cents) || 0) / 100;
+    var fixed = (Math.round(n) === n) ? String(Math.round(n)) : n.toFixed(2);
+    return (currency === "USD" || !currency ? "$" : "") + fixed +
+      (currency && currency !== "USD" ? " " + currency : "");
+  }
+  function days(plan) {
+    return Number(plan.duration_days) || 0;
+  }
+  function periodLabel(plan) {
+    var d = days(plan);
+    if (plan.is_trial) return d + (d === 1 ? " day" : " days");
+    if (d === 30) return "month";
+    if (d === 90) return "3 months";
+    if (d === 365) return "year";
+    return d + " days";
+  }
+  function billingLabel(plan) {
+    var d = days(plan);
+    if (d === 365) return "billed yearly";
+    if (d === 90) return "billed every 3 months";
+    return "billed monthly";
+  }
+  function tierName(plan) {
+    if (plan.is_trial) return "Free Trial";
+    return String(plan.name || "Pro").replace(/^X5Agent\s*[-–]\s*/i, "");
+  }
+  function ctaLabel(plan) {
+    if (plan.is_trial) return "Start free";
+    return "Get " + tierName(plan);
+  }
+  var DEFAULT_FEATURES = [
+    "Your own complete personal agent",
+    "Continuous feature updates",
+    "Your data stays on your device",
+    "Full browser control",
+    "One session, usable on any device",
+    "Every feature unlocked, including future ones"
+  ];
+  function features(plan) {
+    var custom = Array.isArray(plan.features) ? plan.features.filter(Boolean) : [];
+    return custom.length ? custom : DEFAULT_FEATURES;
+  }
+  // Savings against paying the monthly plan every month, from live prices.
+  function savings(plan) {
+    if (plan.is_trial) return "";
+    var d = days(plan);
+    if (d <= 30) return "";
+    var monthly = null;
+    for (var i = 0; i < PLANS.length; i++) {
+      var item = PLANS[i];
+      if (!item.is_trial && days(item) === 30 && Number(item.price_cents) > 0) { monthly = item; break; }
+    }
+    if (!monthly) return "";
+    var full = Number(monthly.price_cents) * Math.round(d / 30);
+    var price = Number(plan.price_cents) || 0;
+    var saved = Math.round(full - price);
+    if (saved <= 0) return "";
+    return "Save " + money(saved, plan.currency) + " (" + Math.round((saved / full) * 100) + "%)";
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function checkSvg() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20 6-11 11-5-5"/></svg>';
+  }
+  function markSvg() {
+    return '<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '<rect x="6" y="6" width="20" height="20" rx="5" fill="#fff"/></svg>';
+  }
+
+  function planCard(plan) {
+    var card = document.createElement("article");
+    // "Most popular" is picked in the admin panel.
+    card.className = "plan" + (plan.is_featured ? " recommended" : "");
+    card.setAttribute("data-plan", plan.id);
+
+    var badge = "";
+    if (plan.is_featured) badge = '<span class="badge blue">Most popular</span>';
+    else if (plan.is_trial) badge = '<span class="badge">Free</span>';
+
+    var priceHtml = plan.is_trial
+      ? '<div class="price"><span class="amount">$0</span><span class="per">' +
+        periodLabel(plan) + ' free<br>no card required</span></div>'
+      : '<div class="price"><span class="amount">' + money(plan.price_cents, plan.currency) +
+        '</span><span class="per">' + (plan.currency || "USD") + " / " + periodLabel(plan) +
+        '<br>' + billingLabel(plan) + '</span></div>';
+
+    var note = plan.is_trial ? "No card required" : savings(plan);
+    var list = features(plan).map(function (f) {
+      return "<li>" + checkSvg() + f + "</li>";
+    }).join("");
+
+    card.innerHTML =
+      badge +
+      '<div class="plan-mark" aria-hidden="true">' + markSvg() + "</div>" +
+      "<h2>" + esc(tierName(plan)) + "</h2>" +
+      priceHtml +
+      '<button class="cta" type="button"><span class="spinner"></span><span class="cta-text">' +
+      esc(ctaLabel(plan)) + "</span></button>" +
+      '<p class="note' + (note && !plan.is_trial ? " is-save" : "") + '">' +
+        (note || "&nbsp;") + "</p>" +
+      '<div class="rule"></div>' +
+      '<ul class="features">' + list + "</ul>";
+
+    card.querySelector(".cta").addEventListener("click", function () {
+      choose(plan, card);
+    });
+    return card;
+  }
+
+  function renderPlans(plans) {
+    PLANS = plans || [];
+    plansBox.innerHTML = "";
+    loadingBox.hidden = true;
+    plansBox.hidden = false;
+    if (!PLANS.length) {
+      plansBox.innerHTML = "";
+      fail("No plans are available right now. Try again in a moment.");
+      return;
+    }
+    var trial = null, paid = [];
+    for (var i = 0; i < PLANS.length; i++) {
+      var p = PLANS[i];
+      if (!p || !p.id) continue;
+      if (p.is_trial) { if (!trial) trial = p; }
+      else paid.push(p);
+    }
+    paid.sort(function (a, b) {
+      var da = Number(a.duration_days) || 0, db = Number(b.duration_days) || 0;
+      if (da !== db) return da - db;
+      return (Number(a.price_cents) || 0) - (Number(b.price_cents) || 0);
+    });
+    var ordered = (trial ? [trial] : []).concat(paid);
+    ordered.forEach(function (p) {
+      plansBox.appendChild(planCard(p));
+    });
+  }
+
+  function setBusy(card, on) {
+    var btn = card.querySelector(".cta");
+    if (!btn) return;
+    btn.disabled = on;
+    btn.classList.toggle("loading", on);
+  }
+
+  function readJson(res) {
+    return res.json().catch(function () { return {}; }).then(function (data) {
+      return { status: res.status, data: data || {} };
+    });
+  }
+
+  function openAgent() {
+    location.replace("/agent");
+  }
+
+  function choose(plan, card) {
+    clearFail();
+    setBusy(card, true);
+    fetch("/api/onboarding/choose", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan_id: plan.id })
+    }).then(readJson).then(function (x) {
+      if (x.status === 200 && x.data && x.data.ok) {
+        var r = x.data.result || {};
+        if (r.chosen) { openAgent(); return; }
+        var co = r.checkout || {};
+        if (co.checkout_url) {
+          // Real provider: its own page handles the payment and returns here.
+          location.href = co.checkout_url;
+          return;
+        }
+        fail("The plan could not be saved. Try again.");
+        setBusy(card, false);
+        return;
+      }
+      var msg = (x.data && x.data.error) || "Could not save the plan.";
+      fail(msg);
+      setBusy(card, false);
+      if (x.status === 401) { location.replace("/login.html"); }
+    }).catch(function () {
+      fail("Could not reach the server. Try again.");
+      setBusy(card, false);
+    });
+  }
+
+  function load() {
+    fetch("/api/onboarding/status", { cache: "no-store" }).then(readJson).then(function (x) {
+      if (x.status === 401) { location.replace("/login.html"); return; }
+      if (x.status !== 200 || !x.data || !x.data.ok) {
+        loadingBox.hidden = true;
+        fail((x.data && x.data.error) || "Could not load your plans.");
+        return;
+      }
+      var d = x.data;
+      var license = d.license || {};
+      // A lost license session keeps the page (it shows the sign-in form);
+      // only a stored choice sends the owner on to the console.
+      if (!license.connected) {
+        loadingBox.hidden = true;
+        plansBox.hidden = true;
+        authPanel.hidden = false;
+        $("authEmail").value = d.email || "";
+        return;
+      }
+      if (!d.needs_onboarding) { openAgent(); return; }
+      renderPlans(d.plans || []);
+    }).catch(function () {
+      loadingBox.hidden = true;
+      fail("Could not reach the server.");
+    });
+  }
+
+  $("authForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    clearFail();
+    var em = $("authEmail").value.trim();
+    var pw = $("authPw").value;
+    if (!em || !pw) { fail("Enter your email and password."); return; }
+    var btn = $("authGo");
+    btn.disabled = true;
+    fetch("/api/license/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: em, password: pw })
+    }).then(readJson).then(function (x) {
+      if (x.status === 200 && x.data && x.data.ok) {
+        location.reload();
+        return;
+      }
+      fail((x.data && x.data.error) || "Sign-in failed.");
+      btn.disabled = false;
+    }).catch(function () {
+      fail("Could not reach the server.");
+      btn.disabled = false;
+    });
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

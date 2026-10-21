@@ -2,15 +2,37 @@
 # X5Agent one-liner setup (Linux / Mac).
 # Installs + starts the console PERSISTENTLY in a single command
 # (detached: safe to close SSH; re-running kills the old server and
-# starts a fresh one on the same port 7777; stop with `x5agent --off`):
-#   curl -fsSL https://raw.githubusercontent.com/X5Coder/X5Agent/main/setup.sh | bash
+# starts a fresh one on the same port 7777; stop with `x5agent --off`).
+#
+# The repository is PRIVATE, so the clone needs a read-only GitHub token.
+# Pass it in the environment (never in the URL of your shell history):
+#   X5_INSTALL_TOKEN=ghp_xxx bash setup.sh
+#   X5_INSTALL_TOKEN=ghp_xxx curl -fsSL https://x5agent.com/setup.sh | bash
+# Without a token the public URL is still tried (works for a public mirror).
+# The token is used for one clone/pull and then removed from the git remote.
+#
 # With options (passed through to project/install.py):
-#   curl -fsSL .../setup.sh | bash -s -- --email owner@mail.com --password S3cret123
+#   X5_INSTALL_TOKEN=ghp_xxx bash setup.sh --email owner@mail.com --password S3cret123
 # Re-running updates the source only (git pull --ff-only, data never touched).
 set -euo pipefail
 
-REPO_URL="https://github.com/X5Coder/X5Agent"
+REPO_SLUG="X5Coder/X5Agent"
+REPO_URL="${X5_REPO_URL:-https://github.com/$REPO_SLUG.git}"
 DIR="${X5_DIR:-$HOME/X5Agent}"
+# Prefer the explicit install token, then the usual GitHub env names.
+TOKEN="${X5_INSTALL_TOKEN:-${X5_GITHUB_TOKEN:-${GITHUB_TOKEN:-${GH_TOKEN:-}}}}"
+if [ -n "$TOKEN" ]; then
+  # x-access-token keeps the format valid for fine-grained and classic tokens.
+  AUTH_URL="https://x-access-token:${TOKEN}@github.com/${REPO_SLUG}.git"
+else
+  AUTH_URL="$REPO_URL"
+fi
+
+# Never leave the token behind in .git/config: the remote always ends up clean.
+clean_remote() {
+  git -C "$DIR" remote set-url origin "$REPO_URL" >/dev/null 2>&1 || true
+}
+trap clean_remote EXIT
 
 if ! command -v git >/dev/null 2>&1; then
   echo "[setup] ERROR: git is missing. Install it first: sudo apt install -y git" >&2
@@ -19,10 +41,26 @@ fi
 
 if [ -d "$DIR/.git" ]; then
   echo "[setup] updating existing copy: $DIR"
+  if [ -n "$TOKEN" ]; then
+    git -C "$DIR" remote set-url origin "$AUTH_URL"
+  fi
   git -C "$DIR" pull --ff-only || echo "[setup] WARN: git pull failed, continuing with current code"
+  clean_remote
 else
   echo "[setup] cloning into: $DIR"
-  git clone "$REPO_URL" "$DIR"
+  if ! git clone --depth 1 "$AUTH_URL" "$DIR"; then
+    echo "[setup] ERROR: clone failed." >&2
+    if [ -z "$TOKEN" ]; then
+      echo "[setup] The repository is private. Run again with a read-only token:" >&2
+      echo "        X5_INSTALL_TOKEN=<github-token> bash setup.sh" >&2
+    else
+      echo "[setup] Check that the token is valid and can read $REPO_SLUG." >&2
+    fi
+    exit 1
+  fi
+  # --depth 1 keeps the download small; unshallow so later pulls/updates work.
+  git -C "$DIR" fetch --unshallow >/dev/null 2>&1 || true
+  clean_remote
 fi
 
 PY=""

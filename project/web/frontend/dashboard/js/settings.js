@@ -1,11 +1,12 @@
 /**
- * settings.js — project info, check-then-confirm updates, security + account.
+ * settings.js — check-then-confirm updates, backup/restore, chat history and account.
  * Owns: project version line, check-then-confirm updates (check only:
  * compares updates.json (repo root) with GitHub and shows its features,
  * with a separate "Update now" button that runs only after your approval —
  * code only, so no data is ever lost — plus live server-side progress while
- * updating), password change validation, logout (behind a transform-animated confirm dialog via
- * the shared modal shell). Local-only, honest labels.
+ * updating), backup/restore, logout (behind a transform-animated confirm
+ * dialog via the shared modal shell). License controls live on the
+ * Subscription page only; the key can never be stopped from here.
  */
 "use strict";
 
@@ -454,42 +455,8 @@ export function initSettings() {
     _onRunUpdate(e.currentTarget);
   });
 
-  // Password fields live inside #pwForm (silences Chrome's
-  // "password not in a form" warning + Enter submits like a real form).
-  document.getElementById("pwForm")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const oldPw = document.getElementById("pwOld");
-    const newPw = document.getElementById("pwNew");
-    const confirmPw = document.getElementById("pwConfirm");
-    if (!oldPw?.value || !newPw?.value || !confirmPw?.value) {
-      toast("Fill in all password fields");
-      return;
-    }
-    if (newPw.value.length < 8) {
-      toast("New password too short");
-      return;
-    }
-    if (newPw.value !== confirmPw.value) {
-      toast("Passwords do not match");
-      return;
-    }
-    fetch("/api/auth/password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ old_password: oldPw.value, new_password: newPw.value }),
-    }).then((r) => r.json().then((d) => ({ s: r.status, d }))).then(({ s, d }) => {
-      if (s === 200 && d && d.ok) {
-        toast("Password updated");
-      } else if (s === 401) {
-        location.href = "/login.html";
-      } else {
-        toast((d && d.error) || "Password change failed");
-      }
-    }).catch(() => toast("Password change failed"));
-    oldPw.value = "";
-    newPw.value = "";
-    confirmPw.value = "";
-  });
+  // The license itself has no Settings controls on purpose: a subscription is
+  // managed on the Subscription page and can never be stopped from the UI.
 
   document.getElementById("clearChatBtn")?.addEventListener("click", () => {
     // Destructive: clears the MAIN chat history + its embeddings + studios.
@@ -564,10 +531,6 @@ export function initSettings() {
   // NOTE: keep this return LAST - everything above wires buttons, and an
   // earlier return would leave them dead (unreachable code).
   return Promise.allSettled([
-    fetch("/api/dashboard").then((r) => r.json()).then((d) => {
-      const el = document.getElementById("projVersion");
-      if (el && d && d.version) el.textContent = "v" + d.version;
-    }).catch(() => {}),
     _refreshChatCount(),
     _loadBackupInfo(),
   ]);

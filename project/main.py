@@ -43,19 +43,14 @@ def main() -> int:
 
     # 3. Auto-embed tool descriptions for tool_search (detect change -> rebuild)
     try:
-        import importlib.util
+        from core.module_loader import load_from_path
 
         store_path = Path(__file__).resolve().parent / "plugins" / "tool-discovery" / "search" / "store.py"
-        spec = importlib.util.spec_from_file_location("tool_discovery_store_startup", str(store_path))
-        if spec and spec.loader:
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)  # type: ignore
-            tools = mod.ensure_embeddings(auto_create=True)
-            print(f"[OK] Tool embeddings ready: {len(tools)} discoverable tools indexed")
-            for t in tools:
-                print(f"  - {t['name']:15} -> {t['description'][:60]}...")
-        else:
-            print("[WARN] could not load tool discovery store", file=sys.stderr)
+        mod = load_from_path(store_path, "tool_discovery_store_startup")
+        tools = mod.ensure_embeddings(auto_create=True)
+        print(f"[OK] Tool embeddings ready: {len(tools)} discoverable tools indexed")
+        for t in tools:
+            print(f"  - {t['name']:15} -> {t['description'][:60]}...")
     except FileNotFoundError as e:
         print(f"[WARN] tool embeddings skipped (resources missing): {e}", file=sys.stderr)
     except Exception as e:

@@ -203,6 +203,17 @@ def _execute_trigger_skill(trigger: dict):
     with its trigger.
     """
     trigger_id = trigger.get("trigger_id")
+    # License gate: a blocked subscription keeps the trigger armed instead of
+    # burning its one-time skill on a refused run.
+    try:
+        from core.licensing import license_service
+
+        if not license_service.local_gate()[0]:
+            print(f"[trigger engine] License blocked; trigger {trigger_id} kept")
+            return
+    except Exception:
+        print(f"[trigger engine] License check unavailable; trigger {trigger_id} kept")
+        return
     skill_ref = trigger.get("skill_ref")
     skill_content = _load_skill_content(skill_ref) if skill_ref else None
     if not skill_content:

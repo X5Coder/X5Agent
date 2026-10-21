@@ -4206,6 +4206,65 @@
   height: 44px;
   margin-top: 4px;
 }
+/* License card: sign-in form + server notice (fixed English templates only). */
+.settings-card .license-form {
+  display: grid;
+  gap: var(--sp-3);
+  position: relative;
+  z-index: 1;
+}
+.license-notice {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  background: var(--fill-tsp-white-light);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 12px 14px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  position: relative;
+  z-index: 1;
+}
+.license-notice[hidden] {
+  display: none;
+}
+/* Sign-in / create-account switch (single form, two modes). */
+.license-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  text-align: center;
+}
+.license-hint[hidden] {
+  display: none;
+}
+.license-switch {
+  margin: -4px auto 0;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color var(--dur-fast) var(--ease);
+}
+.license-switch:hover {
+  text-decoration: underline;
+}
+.license-switch:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+/* `hidden` must beat the author display rules on the form + actions row. */
+.settings-card .license-form[hidden],
+.settings-actions[hidden] {
+  display: none;
+}
 /* Project + updates cards (settings redesign). */
 .settings-row {
   display: flex;
@@ -10959,3 +11018,376 @@ body:not(.browser-visible) #liveMini {
 #studioOverlay .st-ov-frame{flex:1;border:0;background:#1a1a1a;width:100%}
 .st-open-card{display:inline-flex;align-items:center;gap:8px;margin-top:8px;padding:10px 16px;border-radius:999px;border:0;background:#fff;color:#000;font-weight:700;font-size:13px;cursor:pointer}
 
+
+/* ---------- subscription page (same plan cards as the first-run page) ---------- */
+.pricing-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+}
+.sub-tool-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+/* One frosted bar: icon tile + name + hint + a quiet "Soon" pill. */
+.sub-tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin: 0;
+  padding: 14px 18px 14px 16px;
+  text-align: start;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.025) 55%, rgba(255, 255, 255, 0.05)),
+    rgba(24, 24, 24, 0.72);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 10px 26px rgba(0, 0, 0, 0.32);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: not-allowed;
+}
+.sub-tool-btn:disabled { opacity: 1; }
+.sub-tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  color: #d9e7ff;
+}
+.sub-tool-icon svg { width: 19px; height: 19px; }
+.sub-tool-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sub-tool-name { font-size: 13.5px; font-weight: 650; letter-spacing: -0.01em; }
+.sub-tool-hint { font-size: 11.5px; line-height: 1.45; color: var(--text-tertiary); }
+.sub-tool-soon {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* license account fallback (only when the session is gone) */
+.sub-auth {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--sp-5);
+  padding: 24px 26px;
+  align-items: start;
+}
+.sub-auth[hidden] { display: none; }
+.sub-auth-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.sub-auth-copy h3 {
+  font-size: 16px;
+  font-weight: 650;
+  margin: 0;
+}
+.sub-auth-copy p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.sub-auth-form {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.sub-field {
+  display: grid;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+}
+.sub-field input {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-main);
+  background: var(--fill-tsp-white-light);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.sub-field input:focus {
+  border-color: var(--text-blue);
+  box-shadow: 0 0 0 3px rgba(80, 130, 255, 0.16);
+}
+.sub-auth-submit { height: 40px; }
+.sub-auth-msg {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #ff6b6b;
+}
+.sub-auth-msg[hidden] { display: none; }
+.sub-skip {
+  justify-self: start;
+  margin-top: var(--sp-1);
+  padding: 4px 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+.sub-skip:hover { color: var(--text-secondary); }
+
+/* ---------- plan cards: EXACT copy of plans.html (with the sidebar visible) ---------- */
+.sub-plans {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+/* The console keeps a 308px sidebar, so four columns need a real desktop:
+   below that the cards pair up instead of squeezing to ~230px. */
+@media (max-width: 1320px) {
+  .sub-plans { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+}
+@media (max-width: 700px) {
+  .sub-plans { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+}
+.sub-plans[hidden] { display: none; }
+.sub-loading {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+.plan-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 22px 20px 20px;
+  border-radius: 18px;
+  background: linear-gradient(165deg, rgba(255,255,255,0.075), rgba(255,255,255,0.024) 42%, rgba(255,255,255,0.045) 100%), #212121;
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.22), 0 10px 34px rgba(0,0,0,0.36);
+  animation: planRise .45s cubic-bezier(.22,.61,.36,1) both;
+}
+.plan-card:nth-child(2) { animation-delay: .06s; }
+.plan-card:nth-child(3) { animation-delay: .12s; }
+.plan-card.is-recommended {
+  border-color: rgba(59,158,255,.42);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.22), 0 10px 34px rgba(0,0,0,0.36), 0 0 0 1px rgba(59,158,255,.18), 0 14px 46px rgba(59,158,255,.10);
+}
+@keyframes planRise {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+/* Only the first paint animates: a refresh must not replay the entrance. */
+.sub-plans[data-rendered="1"] .plan-card { animation: none; }
+.plan-badge {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: #cfd8e3;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.16);
+}
+.plan-badge.is-blue { color: #cfe6ff; background: rgba(59,158,255,.14); border-color: rgba(59,158,255,.4); }
+.plan-mark {
+  width: 48px;
+  height: 48px;
+  border-radius: 13px;
+  background: #000;
+  border: 1px solid rgba(255,255,255,.13);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+.plan-mark svg { width: 22px; height: 22px; }
+.plan-card h2 {
+  font-family: "Space Grotesk", "Inter", sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -.3px;
+  margin: 0;
+  color: var(--text-primary);
+}
+.plan-price { margin-top: 16px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
+.plan-price .amount {
+  font-family: "Space Grotesk", "Inter", sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  color: var(--text-primary);
+}
+.plan-price .per { font-size: 12.5px; color: #737373; line-height: 1.45; }
+.plan-cta {
+  position: relative;
+  width: 100%;
+  height: 48px;
+  margin-top: 18px;
+  padding: 0 40px 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-radius: 13px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: #f6f8fb;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.045) 55%, rgba(255,255,255,.08)),
+    rgba(30,30,30,.9);
+  border: 1px solid rgba(255,255,255,.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.28),
+    inset 0 -1px 0 rgba(0,0,0,.28),
+    0 6px 18px rgba(0,0,0,.32);
+  transition: border-color .18s ease, transform .18s ease, background .18s ease, box-shadow .18s ease;
+}
+/* Small chevron that slides: reads as "go", stays quiet until hover. */
+.plan-cta::after {
+  content: "";
+  position: absolute;
+  right: 17px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -5px;
+  border-right: 1.8px solid rgba(255,255,255,.62);
+  border-bottom: 1.8px solid rgba(255,255,255,.62);
+  transform: rotate(-45deg);
+  transition: transform .18s ease, border-color .18s ease;
+}
+.plan-cta:hover:not(:disabled) {
+  border-color: rgba(255,255,255,.38);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.2), rgba(255,255,255,.06) 55%, rgba(255,255,255,.1)),
+    rgba(34,34,34,.92);
+  transform: translateY(-1px);
+}
+.plan-cta:hover:not(:disabled)::after { transform: translateX(3px) rotate(-45deg); border-color: #fff; }
+.plan-cta:active:not(:disabled) { transform: translateY(0) scale(.995); }
+.plan-cta:disabled { opacity: .55; cursor: default; }
+.plan-cta:disabled::after { display: none; }
+.plan-cta:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 158, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.plan-note { margin-top: 11px; text-align: center; font-size: 11.5px; color: #737373; }
+.plan-note.is-save { color: #58c98a; font-weight: 600; }
+.plan-rule { height: 1px; margin: 18px 0 15px; background: rgba(255,255,255,.09); }
+.plan-features { list-style: none; display: flex; flex-direction: column; gap: 9px; margin: 0; padding: 0; }
+.plan-features li {
+  position: relative;
+  padding-left: 22px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #d8d8d8;
+}
+.plan-features li svg { position: absolute; left: 0; top: 3px; width: 15px; height: 15px; color: #34c77b; }
+.plan-spinner {
+  display: none;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.4);
+  border-top-color: #fff;
+  animation: planSpin .8s linear infinite;
+}
+.plan-cta.loading .plan-spinner { display: inline-block; }
+@keyframes planSpin { to { transform: rotate(360deg); } }
+
+/* ---------- dashboard plan progress ---------- */
+.plan-bar {
+  margin: 0 0 var(--sp-6);
+  padding: 18px 22px;
+  display: grid;
+  gap: 12px;
+}
+.plan-bar[hidden] { display: none; }
+.plan-bar-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+.plan-bar-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.plan-bar-text h3 { font-size: 16px; font-weight: 650; margin: 0; }
+.plan-bar-left { font-size: 12.5px; font-weight: 600; color: var(--text-blue); white-space: nowrap; }
+.plan-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.plan-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3b9eff, #7cc0ff);
+  transition: width .6s cubic-bezier(.22,.61,.36,1);
+}
+.plan-bar-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  flex-wrap: wrap;
+}
+/* Ends or needs attention: the bar turns red instead of blue. */
+.plan-bar.is-ended .plan-bar-fill { background: var(--red); }
+.plan-bar.is-warning .plan-bar-fill { background: linear-gradient(90deg, #d98a2b, #f0b25a); }
+.plan-bar.is-ended .plan-bar-left,
+.plan-bar.is-warning .plan-bar-left { color: var(--red); }
+
+@media (max-width: 820px) {
+  .sub-auth { grid-template-columns: 1fr; padding: 22px; }
+  .sub-plans { grid-template-columns: 1fr; gap: 18px; }
+  .plan-card { padding: 26px 22px 24px; border-radius: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .plan-card { animation: none; }
+  .plan-bar-fill { transition: none; }
+}

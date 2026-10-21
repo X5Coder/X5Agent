@@ -17,6 +17,10 @@ from core.agent.loop.dispatcher import execute_tool
 STORAGE_DB = Path(__file__).resolve().parents[3] / "storage" / "database"
 MAX_STEPS = 500
 MAX_DYNAMIC_TOOLS = 20
+# Assembled long reply hard ceiling (reply_assembly). Per part the tool caps
+# at 30000 chars; this total cap keeps a runaway loop from growing memory
+# without limit (once reached, the turn finalizes what it already has).
+MAX_REPLY_CHARS = 300_000
 
 # Studio-session tools: the 4 base tools exist inside every PDF Studio
 # branch session (pre-seeded there directly). The main agent never sees the
@@ -572,7 +576,7 @@ def _summarize_output(result: dict, name: str | None = None, args: Any = None) -
             # question only, so the step still carries context.
             q = str(safe_args.get("question") or out.get("question") or "").strip()
             a = str(out.get("answer") or "").strip()
-            lines: list[str] = []
+            lines = []
             if q:
                 lines.append("Q: " + q[:200])
             if a:
@@ -816,6 +820,26 @@ def _collect_final_images(tool_calls_log: list) -> list[dict]:
     except Exception:
         pass
     return images
+
+
+def _join_reply_parts(parts: list) -> str:
+    """Join reply_assembly parts into ONE reply, preserving their formatting.
+
+    Parts are appended exactly as written; a separator is added only when the
+    boundary would otherwise glue two words/lines together (the model is told
+    to write plain part text without headings). Never raises.
+    """
+    out = ""
+    try:
+        for part in parts or []:
+            if not isinstance(part, str) or not part:
+                continue
+            if out and not out.endswith(("\n", " ")) and not part.startswith(("\n", " ")):
+                out += "\n\n"
+            out += part
+    except Exception:
+        return out
+    return out
 
 
 def _persist_steps(tool_calls_log: list) -> list[dict]:
@@ -1332,6 +1356,25 @@ def _clear_temp_images_if_any():
         pass
 
 
+def _license_gate() -> tuple[bool, str]:
+    """Local license check for every run, every step and every tool batch.
+
+    It reads the signed entitlement already on disk (15-minute token) and never
+    contacts the server, so a long run cannot turn into hundreds of network
+    calls. A broken token is re-read once; if it still fails the run stops with
+    a message that carries the fixed site address. The heartbeat thread in
+    background is what renews the token.
+    """
+    try:
+        from core.licensing import license_service
+
+        return license_service.local_gate()
+    except Exception:
+        from core.licensing import notices
+
+        return False, notices.LOCAL_CHECK_FAILED
+
+
 def run_loop(
     user_input: str,
     max_steps: int = 500,
@@ -1347,6 +1390,7 @@ def run_loop(
     restricted: bool = False,
     on_question=None,
     on_live_event=None,
+    on_reply_part=None,
     cancel_flag=None,
     session_key: str | None = None,
     session_history: str | None = None,
@@ -1367,6 +1411,9 @@ def run_loop(
     on_question(kind, payload) pauses for ask/approval/live and returns the user's answer dict.
     on_live_event({"tool", "output", "success"}) fires for live_preview/
     close_browser completions (best-effort).
+    on_reply_part(text, index, action) fires for every accepted reply_assembly
+    part — the UI shows it instantly as the reply; the final answer is the
+    joined parts and the turn ends when a part carries action="stop".
     isolated=True for scheduled large tasks (skips chat history, uses todo_snapshot).
     session_key: persist this run into the job's/trigger's own branch session
       instead of the main conversation ("trigger:<id>" → the trigger's hidden
@@ -1403,7 +1450,25 @@ def run_loop(
         raise ValueError("max_steps must be 1..500")
     if session_key is not None and (not isinstance(session_key, str) or not session_key.strip()):
         raise ValueError("session_key must be non-empty string")
-    # Gate FIRST: no request runs without the built-in resources, even when a
+    # License gate FIRST: no model or tool runs without a verified, working
+    # subscription. A refused resume persists nothing (the stopped marker and
+    # Continue pill stay retryable); a studio turn never touches the main chat.
+    _license_ok, _license_message = _license_gate()
+    if not _license_ok:
+        if not resume_stopped and not studio_session:
+            try:
+                _persist_conversation(user_input, _license_message, [], 0.0)
+            except Exception:
+                pass
+        return {
+            "steps": 0,
+            "final_answer": _license_message,
+            "history": [],
+            "tool_calls_log": [],
+            "success": False,
+            "license_blocked": True,
+        }
+    # Gate: no request runs without the built-in resources, even when a
     # template model is connected (embeddings back tool discovery + memory).
     try:
         from core.embedding.bootstrap import require_ready as _emb_ready
@@ -1499,7 +1564,19 @@ def run_loop(
     turn_t0 = time.time()
     final_answer: str | None = None
     cancelled = False
+    license_blocked = False
     persist_ids: tuple | None = None
+    # Long-reply assembly (reply_assembly tool): every accepted part is kept
+    # in order, relayed to the UI the moment it lands, and the final answer is
+    # the parts joined — never the model's closing text. "stop" ends the turn
+    # immediately (the model is not called again). Bounded: per-part cap in
+    # the tool, total cap here, so a runaway model can never grow memory
+    # without limit.
+    reply_parts: list[str] = []
+    reply_part_count = 0
+    reply_total_chars = 0
+    assembly_done = False
+    reply_tail = ""
     # Tools skipped this turn for a missing model connection, in order
     # (deduplicated by tool). Flags the final reply so the UI offers a
     # per-tool Connect/Skip choice. The loop itself never stops for this.
@@ -1533,6 +1610,13 @@ def run_loop(
         steps = step
         if _is_cancelled(cancel_flag):
             cancelled = True
+            break
+        # A subscription can lapse mid-task. Stop before spending another
+        # model call or running a tool; the signed token is the time source.
+        _license_ok, _license_message = _license_gate()
+        if not _license_ok:
+            final_answer = _license_message
+            license_blocked = True
             break
         if verbose:
             print(f"\n--- Loop step {step}/{max_steps} ---")
@@ -1615,6 +1699,14 @@ def run_loop(
         if _is_cancelled(cancel_flag):
             cancelled = True
             break
+        # Last check before consequential tool execution: the license could
+        # have lapsed while the model was answering.
+        if tool_calls:
+            _license_ok, _license_message = _license_gate()
+            if not _license_ok:
+                final_answer = _license_message
+                license_blocked = True
+                break
         if verbose:
             if content:
                 print(f"[LLM content] {str(content)[:300]}")
@@ -1624,7 +1716,13 @@ def run_loop(
         if not tool_calls:
             # No tools requested - final answer is agent content only.
             # (Empty replies never reach here: they raise into recovery above.)
+            # A reply already assembled from parts stays the answer; any text
+            # the model wrote after the last part is kept as its tail only when
+            # it never sent action="stop" (weak-model salvage, never duplicate).
             final_answer = content if isinstance(content, str) and content.strip() else ""
+            if reply_parts and not assembly_done:
+                reply_tail = final_answer
+                final_answer = _join_reply_parts([*reply_parts, reply_tail])
             messages.append({"role": "assistant", "content": final_answer})
             if verbose:
                 print(f"[Loop finished at step {step} with final answer]")
@@ -1712,7 +1810,10 @@ def run_loop(
             else:
                 # Long tools (e.g. studio_page) receive the cancel event so
                 # STOP aborts them mid-execution instead of after they finish.
-                result = execute_tool(name, args, cancel_flag=cancel_flag)
+                # reply_assembly additionally receives the loop's running part
+                # number (the model never supplies it).
+                result = execute_tool(name, args, cancel_flag=cancel_flag,
+                                      part_index=(reply_part_count + 1) if name == "reply_assembly" else None)
             # Missing-model gate: pauses for the user's Connect/Skip choice.
             # Skip continues without the tool (the English skip sentence goes
             # to the model); Connect retries the SAME tool once the model is
@@ -1742,6 +1843,33 @@ def run_loop(
                 break
             tool_calls_log.append({"step": step, "tool": name, "arguments": args,
                                    "result": result, "reason": call_reason})
+            # Long-reply assembly: every accepted part is relayed to the UI
+            # NOW (it IS the visible reply) and the loop stops for good on
+            # action="stop" — the model is never asked to write it again.
+            if name == "reply_assembly" and isinstance(result, dict) and result.get("success"):
+                try:
+                    _pout = result.get("output") if isinstance(result.get("output"), dict) else {}
+                    if _pout.get("accepted"):
+                        _ptext = args.get("part") if isinstance(args, dict) else None
+                        _paction = str(_pout.get("action") or "next")
+                        if isinstance(_ptext, str) and _ptext.strip():
+                            if reply_total_chars + len(_ptext) <= MAX_REPLY_CHARS:
+                                reply_parts.append(_ptext)
+                                reply_part_count += 1
+                                reply_total_chars += len(_ptext)
+                                if on_reply_part is not None:
+                                    try:
+                                        on_reply_part(_ptext, reply_part_count, _paction)
+                                    except Exception:
+                                        pass
+                            else:
+                                # Hard ceiling: finalize with what we have,
+                                # never grow the reply past its bound.
+                                _paction = "stop"
+                        if _paction == "stop":
+                            assembly_done = True
+                except Exception:
+                    pass
             # Live handoff: human_control pauses the loop so the user
             # can drive the browser; the UI resumes it via on_question("live").
             # live_preview never pauses — it only shows the floating player.
@@ -1866,12 +1994,18 @@ def run_loop(
             }
             messages.append(tool_msg)
             unit.append(tool_msg)
+            if assembly_done:
+                break
 
         # The step's unit (call + all its outputs) is complete: visible to the
         # model from the next step on, inside the last-30 window.
         units.append(unit)
         # A mid-step cancel (fresh answer / STOP during a pause) stops now.
         if cancelled:
+            break
+        # action="stop" was received: the assembled parts ARE the final reply.
+        if assembly_done:
+            final_answer = _join_reply_parts(reply_parts)
             break
 
         # Loop continues - next iteration will see tool outputs
@@ -1883,6 +2017,12 @@ def run_loop(
 
         if step == max_steps and final_answer is None:
             final_answer = ""
+
+    # A reply assembled from parts is never lost when the loop ends without
+    # its own closing text (max steps reached). A real provider/license error
+    # still wins — an interrupted answer is never presented as complete.
+    if reply_parts and not cancelled and not (final_answer or "").strip():
+        final_answer = _join_reply_parts(reply_parts)
 
     # Ensure final_answer exists — agent content only, never a default sentence.
     if final_answer is None:
@@ -1952,8 +2092,9 @@ def run_loop(
         "history": messages,
         "tool_calls_log": tool_calls_log,
         "model_used": mdl,
-        "success": not cancelled,
+        "success": not cancelled and not license_blocked,
         "cancelled": cancelled,
+        "license_blocked": license_blocked,
         "elapsed_sec": elapsed_sec,
         "final_images": final_images,
         "final_files": final_files,

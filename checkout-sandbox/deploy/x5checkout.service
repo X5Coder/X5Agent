@@ -1,0 +1,17 @@
+[Unit]
+Description=X5Agent sandbox checkout (test payment provider)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/x5checkout
+EnvironmentFile=/opt/x5checkout/.env
+ExecStart=/opt/x5checkout/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8789
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

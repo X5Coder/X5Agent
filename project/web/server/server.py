@@ -20,7 +20,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, urlsplit
 
 # Load .env quietly (no hardcoded secrets, no logging) — handles BOM
 # New home: X5Agent/Data/.env (inside zip backup). Fallback legacy project/.env.
@@ -1122,6 +1122,46 @@ def _session_cookie(token: str, clear: bool = False) -> str:
     return f"{_cookie_name}={token}; HttpOnly; Path=/; SameSite=Lax; Max-Age={max_age}"
 
 
+def _ensure_license_account(email: str, password: str) -> None:
+    """Create the central license account for a new console owner.
+
+    Signup is what makes the console usable, so the account must exist on the
+    license server before the owner record is written: if this fails the first
+    run is refused with a readable error and nothing local is created, so the
+    user can simply try again. An existing license account with the same
+    password (a retried first run) signs in instead of failing.
+    """
+    from core.licensing import LicenseError, license_service
+
+    try:
+        license_service.register(email, password)
+        return
+    except LicenseError as exc:
+        first_error = exc
+    try:
+        license_service.login(email, password)
+    except LicenseError:
+        raise first_error
+
+
+def _sign_in_license_if_needed(email: str, password: str) -> None:
+    """Best effort: re-attach the license session after a console sign-in.
+
+    The owner and the license account share the email/password by design, so a
+    new device (or a wiped license.json) recovers with the same credentials
+    instead of dropping to a signed-out plan page. Failures are ignored: the
+    plan page still offers the license sign-in form.
+    """
+    try:
+        from core.licensing import license_service
+
+        if license_service.status().get("connected"):
+            return
+        license_service.login(email, password)
+    except Exception:
+        return
+
+
 # Pending loop questions: qid -> answer Queue (one outstanding per loop, bounded wait)
 _PENDING_QUESTIONS: dict = {}
 # Read-only metadata mirror (qid -> {kind,text,choices,...}) so a refreshed
@@ -1340,7 +1380,8 @@ def _run_frame_remember(frame: dict) -> None:
     if not isinstance(frame, dict):
         return
     if frame.get("type") not in ("event_start", "event", "question",
-                                 "question-expired", "live", "live_end"):
+                                 "question-expired", "live", "live_end",
+                                 "reply_part"):
         return
     try:
         with _RUN_LOCK:
@@ -1394,6 +1435,19 @@ def _build_stream_frame(kind: str, val: Any, out: Any) -> dict | None:
             return {"type": "live", "live": val}
         if kind == "live_end":
             return {"type": "live_end"}
+        if kind == "reply_part":
+            # One accepted reply_assembly part: the UI appends it to the
+            # visible reply the moment it lands (fake stream). text is the
+            # part itself; out carries (index, action).
+            if not isinstance(val, str) or not val:
+                return None
+            _pi, _pa = (list(out) + [None, None])[:2] if isinstance(out, (tuple, list)) else (None, None)
+            frame = {"type": "reply_part", "text": val[:40000]}
+            if isinstance(_pi, int):
+                frame["index"] = _pi
+            if isinstance(_pa, str) and _pa:
+                frame["action"] = _pa[:8]
+            return frame
         if kind in ("stop", "ping"):
             return None
         # Completion: out is (output, key) or (output, key, media[, reason[, step[, failed]]]).
@@ -2133,6 +2187,18 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/health":
             self._send_json({"status": "ok"})
             return
+        if parsed.path == "/api/license/status":
+            self._handle_license_status_get()
+            return
+        if parsed.path == "/api/license/plans":
+            self._handle_license_plans_get()
+            return
+        if parsed.path == "/api/license/checkout":
+            self._handle_license_checkout_get(parsed)
+            return
+        if parsed.path == "/api/onboarding/status":
+            self._handle_onboarding_status_get()
+            return
         if parsed.path == "/api/conversation":
             self._handle_conversation_get()
             return
@@ -2330,6 +2396,19 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     return
             except Exception:
                 pass
+        # Plan onboarding: a signed-in owner that has not picked a plan yet
+        # gets the plan page, and the plan page itself bounces back once the
+        # choice is stored (server-side truth, survives refresh/other devices).
+        if parsed.path in ("/plans", "/plans.html"):
+            if not self._onboarding_needed():
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return
+            self.path = "/plans.html"
+            super().do_GET()
+            return
         last_seg = parsed.path.rsplit("/", 1)[-1]
         if "." not in last_seg:
             self.path = "/index.html"
@@ -2349,8 +2428,23 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/auth/logout":
             self._handle_auth_logout_post()
             return
-        if parsed.path == "/api/auth/password":
-            self._handle_auth_password_post()
+        if parsed.path == "/api/license/login":
+            self._handle_license_login_post()
+            return
+        if parsed.path == "/api/license/register":
+            self._handle_license_register_post()
+            return
+        if parsed.path == "/api/license/logout":
+            self._handle_license_logout_post()
+            return
+        if parsed.path == "/api/license/heartbeat":
+            self._handle_license_heartbeat_post()
+            return
+        if parsed.path == "/api/license/checkout":
+            self._handle_license_checkout_post()
+            return
+        if parsed.path == "/api/onboarding/choose":
+            self._handle_onboarding_choose_post()
             return
         if parsed.path == "/api/terminal_access":
             self._handle_terminal_access_post()
@@ -4631,6 +4725,11 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         import base64 as _b64
         import uuid as _uuid
 
+        _license_block = self._license_block_payload()
+        if _license_block:
+            self._send_json(_license_block, status=403)
+            return
+
         try:
             raw = _read_request_body(self.rfile, self.headers, STT_MAX_BODY)
             if not raw:
@@ -5412,6 +5511,202 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         except Exception:
             return False
 
+    # ------------------------------------------------------------- license
+
+    def _license_block_payload(self):
+        """Fast, structured refusal when the subscription cannot run the agent.
+
+        Returns None when the run may proceed. The decision is local: the
+        signed entitlement on disk is checked and never a per-request server
+        call (the background heartbeat is the only thing that talks to the
+        license server).
+        """
+        try:
+            from core.licensing import license_service
+
+            ok, message = license_service.local_gate()
+            if ok:
+                return None
+            return {
+                "error": message,
+                "license_blocked": True,
+                "license": license_service.status(),
+            }
+        except Exception:
+            from core.licensing import notices
+
+            return {
+                "error": notices.LOCAL_CHECK_FAILED,
+                "license_blocked": True,
+            }
+
+    def _handle_license_status_get(self):
+        try:
+            from core.licensing import license_service
+
+            self._send_json({"ok": True, "license": license_service.status()})
+        except Exception:
+            self._send_json({"ok": False, "error": "License status unavailable."}, status=500)
+
+    def _handle_license_plans_get(self):
+        from core.licensing import LicenseError, license_service
+
+        try:
+            self._send_json({"ok": True, "plans": license_service.plans()})
+        except LicenseError as e:
+            self._send_json({"ok": False, "error": str(e)[:300]}, status=503)
+        except Exception:
+            self._send_json({"ok": False, "error": "Plans unavailable."}, status=503)
+
+    def _handle_license_login_post(self):
+        self._handle_license_auth_post("login")
+
+    def _handle_license_register_post(self):
+        self._handle_license_auth_post("register")
+
+    def _handle_license_auth_post(self, action):
+        from core.licensing import LicenseError, license_service
+
+        submit = (
+            license_service.register if action == "register" else license_service.login
+        )
+        try:
+            payload = self._read_json_body(8192)
+            status = submit(payload.get("email"), payload.get("password"))
+            self._send_json({"ok": True, "license": status})
+        except LicenseError as e:
+            try:
+                current = license_service.status()
+            except Exception:
+                current = None
+            self._send_json(
+                {"ok": False, "error": str(e)[:300], "license": current}, status=400
+            )
+        except Exception:
+            label = "sign-up" if action == "register" else "sign-in"
+            self._send_json(
+                {"ok": False, "error": f"License {label} failed."}, status=500
+            )
+
+    def _handle_license_logout_post(self):
+        try:
+            from core.licensing import license_service
+
+            self._send_json({"ok": True, "license": license_service.logout()})
+        except Exception:
+            self._send_json({"ok": False, "error": "License sign-out failed."}, status=500)
+
+    def _handle_license_heartbeat_post(self):
+        try:
+            from core.licensing import license_service
+
+            self._send_json({"ok": True, "license": license_service.heartbeat()})
+        except Exception:
+            self._send_json({"ok": False, "error": "License check failed."}, status=503)
+
+    def _license_return_url(self, path: str = "/subscription"):
+        """Where the provider sends the buyer back (this console, subscription page)."""
+        origin = (self.headers.get("Origin") or "").strip()
+        base = ""
+        if origin:
+            try:
+                parsed = urlsplit(origin)
+                if parsed.scheme in ("http", "https") and parsed.hostname:
+                    base = f"{parsed.scheme}://{parsed.netloc}"
+            except ValueError:
+                base = ""
+        if not base:
+            host = (self.headers.get("Host") or "").strip()
+            if host and len(host) <= 255 and not any(c in host for c in "\r\n\t /"):
+                base = f"http://{host}"
+        if not base:
+            return None
+        return base + path
+
+    def _handle_license_checkout_post(self):
+        from core.licensing import LicenseError, license_service
+
+        try:
+            payload = self._read_json_body(8192)
+            # One call for every card: the trial is granted here (no payment
+            # page), a sandbox plan is charged at once, a hosted one returns a
+            # checkout link the page opens.
+            result = license_service.choose_plan(
+                payload.get("plan_id"), self._license_return_url()
+            )
+            if result.get("chosen"):
+                checkout = {"instant": True, "license": result.get("license")}
+            else:
+                checkout = dict(result.get("checkout") or {})
+            self._send_json({"ok": True, "checkout": checkout})
+        except LicenseError as e:
+            self._send_json({"ok": False, "error": str(e)[:300]}, status=400)
+        except Exception:
+            self._send_json(
+                {"ok": False, "error": "Could not start the checkout."}, status=500
+            )
+
+    def _handle_license_checkout_get(self, parsed):
+        from core.licensing import LicenseError, license_service
+
+        try:
+            params = parse_qs(parsed.query or "")
+            session_id = (params.get("session") or [""])[0]
+            result = license_service.checkout_status(session_id)
+            self._send_json({"ok": True, "checkout": result})
+        except LicenseError as e:
+            self._send_json({"ok": False, "error": str(e)[:300]}, status=400)
+        except Exception:
+            self._send_json(
+                {"ok": False, "error": "Could not read the checkout."}, status=500
+            )
+
+    def _handle_onboarding_status_get(self):
+        """GET /api/onboarding/status — plan page state (owner session only)."""
+        from core.licensing import LicenseError, license_service
+
+        try:
+            status = license_service.status()
+            plans = []
+            if status.get("connected"):
+                try:
+                    plans = license_service.plans()
+                except LicenseError:
+                    plans = []
+            self._send_json({
+                "ok": True,
+                "email": status.get("email") or "",
+                "license": status,
+                "plans": plans,
+                # Same rule as _onboarding_needed(): a missing license session
+                # still belongs on this page (it shows the sign-in form), so a
+                # disconnected client is never bounced into the console.
+                "needs_onboarding": bool(
+                    not status.get("bypass") and not status.get("plan_chosen")
+                ),
+            })
+        except Exception:
+            self._send_json(
+                {"ok": False, "error": "Onboarding status unavailable."}, status=500
+            )
+
+    def _handle_onboarding_choose_post(self):
+        """POST /api/onboarding/choose {plan_id} — store the first plan choice."""
+        from core.licensing import LicenseError, license_service
+
+        try:
+            payload = self._read_json_body(8192)
+            result = license_service.choose_plan(
+                payload.get("plan_id"), self._license_return_url("/agent")
+            )
+            self._send_json({"ok": True, "result": result})
+        except LicenseError as e:
+            self._send_json({"ok": False, "error": str(e)[:300]}, status=400)
+        except Exception:
+            self._send_json(
+                {"ok": False, "error": "Could not save the plan."}, status=500
+            )
+
     def _handle_chat_post(self):
         try:
             try:
@@ -5419,6 +5714,14 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 loop_input, saved_paths = self._build_loop_input(payload)
             except _ChatError as e:
                 self._send_json({"error": str(e)}, status=e.status)
+                return
+
+            # License gate: no model call or tool run without a working
+            # subscription. The loop checks again at every step.
+            _license_block = self._license_block_payload()
+            if _license_block:
+                self._cleanup_paths(saved_paths)
+                self._send_json(_license_block, status=403)
                 return
 
             # No routable provider active (or no key saved): fail clearly with an
@@ -5502,6 +5805,15 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             loop_input, saved_paths = self._build_loop_input(payload)
         except _ChatError as e:
             self._send_json({"error": str(e)}, status=e.status)
+            return
+
+        # License gate before any SSE headers: the browser gets one clear
+        # JSON refusal and renders it as a plain reply (no blocking fallback,
+        # which would only produce the same refusal as an Error line).
+        _license_block = self._license_block_payload()
+        if _license_block:
+            self._cleanup_paths(saved_paths)
+            self._send_json(_license_block, status=403)
             return
 
         gw = str(payload.get("source") or "").strip().lower() in ("whatsapp", "telegram", "gateway")
@@ -5821,6 +6133,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     on_event=lambda t, o=None, k=None, m=None, r=None, s=None, f=None: _stage("event", t, (o, k, m, r, s, f)),
                     on_tool_start=lambda label, k=None, r=None, s=None: _stage("event_start", label, (k, r, s)),
                     on_token=lambda step, d: _stage("token", step, d),
+                    on_reply_part=lambda text, idx, action: _stage("reply_part", text, (idx, action)),
                     restricted=restricted,
                     on_question=_on_gateway_question if gw else _on_question,
                     on_live_event=_on_live,
@@ -5948,16 +6261,16 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
             pass
 
-    # ---------- console owner gate (terminal-created owner, then cookie sessions) ----------
-    # Owner is created in the TERMINAL ONLY (install prompt / env / server prompt).
-    # The browser can NEVER create the owner: /api/auth/setup is gone (410).
-    # Always public (no session needed to reach them):
+    # ---------- console owner gate (first-run creation, then cookie sessions) ----------
+    # Owner is created ONCE, either in the terminal (install prompt / env / server
+    # prompt) or in the browser on the very first run (/api/auth/setup, refused
+    # 409 as soon as an owner exists). Always public (no session needed):
     _AUTH_PUBLIC_GET = frozenset({
         "/api/health", "/api/auth/status",
         "/login.html",
     })
     _AUTH_PUBLIC_POST = frozenset({
-        "/api/auth/login", "/api/auth/setup",  # setup passes the gate only to be told 410 (gone)
+        "/api/auth/login", "/api/auth/setup",  # setup itself enforces create-once
     })
     # Internal gateway dispatcher (same machine, cookie-less) may POST only
     # these endpoints from loopback. NOTHING else is exempt from login: a
@@ -5968,20 +6281,52 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
         "/api/chat_stream", "/api/chat_answer", "/api/chat_cancel",
     })
 
+    # Pages that stay reachable while the first-run plan choice is pending.
+    _ONBOARDING_PATHS = frozenset({"/plans", "/plans.html", "/login.html"})
+
+    @classmethod
+    def _is_onboarding_path(cls, path: str) -> bool:
+        return path in cls._ONBOARDING_PATHS
+
+    @staticmethod
+    def _is_page_path(path: str) -> bool:
+        """True for a console page; False for APIs, the studio shell and assets."""
+        if path.startswith("/api/") or path.startswith("/studio-pdf"):
+            return False
+        if path.endswith(".html"):
+            return True
+        return "." not in path.rsplit("/", 1)[-1]
+
+    def _onboarding_needed(self) -> bool:
+        """True when a signed-in owner still has to pick a plan.
+
+        UX only: work is still gated fail-closed by the license service. An
+        unexpected error here opens the console instead of locking the owner
+        out of their own machine.
+        """
+        try:
+            from core.licensing import license_service
+
+            status = license_service.status()
+            if status.get("bypass"):
+                return False
+            return not (status.get("connected") and status.get("plan_chosen"))
+        except Exception:
+            return False
+
     def _auth_gate(self, is_post: bool) -> bool:
         """Enforce the owner gate. Returns True when the request was answered.
 
-        STRICT: login is mandatory, always. The owner is terminal-created
-        ONLY (install.py prompt, env X5_EMAIL/X5_PASSWORD, or the server's
-        own startup prompt below). The browser can NEVER create the owner:
-        /api/auth/setup is gone (410), and login.html shows a sign-in form
-        only (no setup mode). No owner yet: NOTHING opens — every page 302s
-        to login, every API (except /api/health + /api/auth/status) 503s with
-        owner_missing so the UI shows "create the owner in the terminal".
-        Owner set: a user with a valid session cookie goes straight to /
-        (login.html itself bounces them forward, so Back never lands on
-        login); everyone else 302s/401s to login. Session = HttpOnly cookie
-        only, no tokens.
+        STRICT: login is mandatory after first run. The owner is created once
+        — install.py prompt, env X5_EMAIL/X5_PASSWORD, the server's startup
+        prompt, or the browser's first-run form (/api/auth/setup, create-once:
+        409 the moment a record exists). No owner yet: NOTHING opens except
+        /login.html + /api/auth/status + /api/auth/setup — every other page
+        302s to login and every other API 503s with owner_missing so the UI
+        offers the creation form. Owner set: a user with a valid session
+        cookie goes straight to / (login.html itself bounces them forward, so
+        Back never lands on login); everyone else 302s/401s to login.
+        Session = HttpOnly cookie only, no tokens.
         """
         try:
             parsed = urlparse(self.path)
@@ -5993,15 +6338,11 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 sys.path.insert(0, str(PROJECT_ROOT))
             from web.server import console_auth as _ca
             if not _ca.is_setup():
-                # No owner: the UI/API never opens. Tell the client to use
-                # the terminal (setup via browser is forbidden).
+                # No owner yet: every page goes to login.html, which shows the
+                # first-run creation form (/api/auth/setup is the only way in).
                 if path.startswith("/api/"):
-                    if path == "/api/auth/setup":
-                        self._send_json({"error": "Removed — create the owner in the terminal."},
-                                        status=410)
-                    else:
-                        self._send_json({"error": "no owner yet — create it in the terminal, then sign in",
-                                         "owner_missing": True}, status=503)
+                    self._send_json({"error": "no owner yet — create it in the browser first",
+                                     "owner_missing": True}, status=503)
                 else:
                     self.send_response(302)
                     self.send_header("Location", "/login.html")
@@ -6009,6 +6350,17 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     self.end_headers()
                 return True
             if _ca.session_valid(_ca.session_from_cookie(self.headers.get("Cookie"))):
+                if (not is_post and self._is_page_path(path)
+                        and not self._is_onboarding_path(path)
+                        and self._onboarding_needed()):
+                    # First run: the account exists but no plan was picked yet.
+                    # Pages go to the plan page; APIs stay open (the page itself
+                    # and the console's own license calls need them).
+                    self.send_response(302)
+                    self.send_header("Location", "/plans.html")
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    return True
                 return False
             try:
                 peer = self.client_address[0] if self.client_address else ""
@@ -6063,9 +6415,52 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json({"error": str(e)[:200]}, status=500)
 
     def _handle_auth_setup_post(self):
-        """POST /api/auth/setup — REMOVED. Owner is terminal-only (410)."""
-        self._send_json({"error": "Removed — create the owner in the terminal."},
-                        status=410)
+        """POST /api/auth/setup {email,password} — first-run owner creation.
+
+        Only allowed while no owner exists: the very first device that reaches
+        the console creates it, and every later call is refused (409). This is
+        the documented first-run flow; /api/auth/login stays the normal path.
+        """
+        try:
+            if str(PROJECT_ROOT) not in sys.path:
+                sys.path.insert(0, str(PROJECT_ROOT))
+            from web.server import console_auth as _ca
+            if _ca.is_setup():
+                self._send_json({"error": "owner already exists — sign in"}, status=409)
+                return
+            data = self._read_json_body()
+            email = str(data.get("email") or "").strip().lower()
+            password = str(data.get("password") or "")
+            problem = _ca.email_problem(email) or _ca.password_problem(password)
+            if problem:
+                self._send_json({"error": problem[:200]}, status=422)
+                return
+            try:
+                from core.licensing import LicenseError, config as _license_config
+                if not _license_config.bypass_enabled():
+                    # Central account first: no local owner without a license
+                    # account, so a failed signup never leaves a half-created
+                    # console the user cannot get past.
+                    _ensure_license_account(email, password)
+            except LicenseError as exc:
+                self._send_json(
+                    {"error": str(exc)[:300], "license_failed": True}, status=502
+                )
+                return
+            try:
+                email = _ca.setup_owner(email, password)
+            except ValueError as exc:
+                self._send_json({"error": str(exc)[:200]}, status=422)
+                return
+            except RuntimeError:
+                self._send_json({"error": "owner already exists — sign in"}, status=409)
+                return
+            token = _ca.create_session()
+            self._send_json({"ok": True, "email": email,
+                             "next": "/plans.html"}, headers={
+                "Set-Cookie": _session_cookie(token)})
+        except Exception as e:
+            self._send_json({"error": str(e)[:200]}, status=500)
 
     def _handle_auth_login_post(self):
         """POST /api/auth/login {email,password} — verifies, then signs in."""
@@ -6082,6 +6477,8 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                                     str(data.get("password") or "")):
                 self._send_json({"error": "wrong email or password"}, status=401)
                 return
+            _sign_in_license_if_needed(str(data.get("email") or "").strip().lower(),
+                                       str(data.get("password") or ""))
             token = _ca.create_session()
             self._send_json({"ok": True}, headers={
                 "Set-Cookie": _session_cookie(token)})
@@ -6133,27 +6530,6 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             _ca.drop_session(sess)
             self._send_json({"ok": True}, headers={
                 "Set-Cookie": _session_cookie("", clear=True)})
-        except Exception as e:
-            self._send_json({"error": str(e)[:200]}, status=500)
-
-    def _handle_auth_password_post(self):
-        """POST /api/auth/password {old_password,new_password} — authed only."""
-        try:
-            if str(PROJECT_ROOT) not in sys.path:
-                sys.path.insert(0, str(PROJECT_ROOT))
-            from web.server import console_auth as _ca
-            email = _ca.owner_email()
-            if not email:
-                self._send_json({"error": "no owner yet"}, status=409)
-                return
-            data = self._read_json_body()
-            try:
-                _ca.change_password(email, str(data.get("old_password") or ""),
-                                    str(data.get("new_password") or ""))
-            except ValueError as e:
-                self._send_json({"error": str(e)[:200]}, status=400)
-                return
-            self._send_json({"ok": True})
         except Exception as e:
             self._send_json({"error": str(e)[:200]}, status=500)
 
@@ -6283,11 +6659,13 @@ def reachable_base(host: str, port: int) -> str:
 
 
 def _ensure_owner_from_terminal() -> bool:
-    """Owner gate at startup: terminal ONLY, browser can never create it.
+    """Owner gate at startup: existing record, env, TTY prompt, then first-run.
 
     Order: existing record -> env X5_EMAIL/X5_PASSWORD -> interactive TTY
-    prompt -> refuse to start. env values are consumed from memory only and
-    never written anywhere except the salted-hash record file.
+    prompt -> start anyway in FIRST-RUN mode (the browser then shows the
+    create-once form at /login.html; /api/auth/setup refuses once a record
+    exists). env values are consumed from memory only and never written
+    anywhere except the salted-hash record file.
     """
     import getpass as _getpass
     import hashlib as _hashlib
@@ -6300,7 +6678,7 @@ def _ensure_owner_from_terminal() -> bool:
         from web.server import console_auth as _ca
         from core.paths import data_db_file as _ddf
         if _ca.is_setup():
-            print(f"  Owner: {_ca.owner_email()} (terminal-created)")
+            print(f"  Owner: {_ca.owner_email()}")
             return True
         email = (_os.environ.get("X5_EMAIL") or "").strip().lower()
         password = _os.environ.get("X5_PASSWORD") or ""
@@ -6322,7 +6700,8 @@ def _ensure_owner_from_terminal() -> bool:
             print(f"  Owner created from env ({email}) - hash only, never plaintext")
             return True
         if sys.stdin.isatty():
-            print("  No owner yet — create it now in this terminal (browser cannot).")
+            print("  No owner yet — create it now in this terminal,")
+            print("  or press Ctrl+C and create it in the browser at /login.html.")
             try:
                 email = input("  email: ").strip().lower()
             except (EOFError, KeyboardInterrupt):
@@ -6353,12 +6732,15 @@ def _ensure_owner_from_terminal() -> bool:
                                        ensure_ascii=False, indent=2), encoding="utf-8")
             print(f"  Owner created ({email}) - hash only, never plaintext")
             return True
-        print("  ERROR: no owner yet — refusing to start.", file=sys.stderr)
-        print("  Create it first: set X5_EMAIL + X5_PASSWORD env, or run install.py,",
+        print("  No owner yet — starting in first-run mode.", file=sys.stderr)
+        print("  Open the console and create the owner once in the browser:",
               file=sys.stderr)
-        print("  then start the server again. The browser can NEVER create the owner.",
+        print(f"    http://<this-machine>:{DEFAULT_PORT}/login.html", file=sys.stderr)
+        print("  The first device to create it becomes the owner — keep the port",
               file=sys.stderr)
-        return False
+        print("  private until that is done (or set X5_EMAIL/X5_PASSWORD and restart).",
+              file=sys.stderr)
+        return True
     except SystemExit:
         raise
     except Exception as e:
@@ -6399,6 +6781,17 @@ def run(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
     # or refuse to start. The browser can NEVER create the owner.
     if not _ensure_owner_from_terminal():
         return 1
+
+    # Central license heartbeat (daemon). The first check runs immediately so
+    # the first agent request is never stuck behind an unverified process.
+    try:
+        if str(PROJECT_ROOT) not in sys.path:
+            sys.path.insert(0, str(PROJECT_ROOT))
+        from core.licensing import license_service as _license_service
+
+        _license_service.start_background()
+    except Exception as e:
+        print(f"[WARN] License heartbeat failed to start: {e}", file=sys.stderr)
 
     # Gateway ingestion (Telegram poller + WhatsApp push wiring): daemon
     # thread for Telegram only; WhatsApp arrives via bridge push events and
@@ -6469,6 +6862,12 @@ def run(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
                     from gateway.service import stop as _gw_stop
 
                     _gw_stop()
+                except Exception:
+                    pass
+                try:
+                    from core.licensing import license_service as _license_stop
+
+                    _license_stop.stop_background()
                 except Exception:
                     pass
     except OSError as e:

@@ -10,6 +10,8 @@ X5Agent/
 # Secrets — never in the image.
 .env
 .env.local
+# Central license server — separate deployment, never inside the client image.
+license-server/
 # Build junk.
 __pycache__/
 *.pyc

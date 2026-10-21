@@ -1,7 +1,8 @@
 /**
  * dashboard.js — real dashboard stats for X5Agent
- * Owns: fetching /api/dashboard + /api/cost + /api/balance + /api/models,
- * populating the stat cards. Measured totals from /api/cost; truthful empty states.
+ * Owns: fetching /api/dashboard + /api/cost + /api/balance + /api/models +
+ * /api/license/status, populating the stat cards and the plan bar.
+ * Measured totals from /api/cost; truthful empty states.
  */
 "use strict";
 
@@ -27,6 +28,78 @@ async function fetchJson(url) {
   } catch (_) {
     return null;
   }
+}
+
+function _parseDate(value) {
+  const t = Date.parse(String(value || ""));
+  return Number.isFinite(t) ? t : 0;
+}
+
+function _shortDate(ms) {
+  if (!ms) return "—";
+  try {
+    return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  } catch (_) {
+    return "—";
+  }
+}
+
+function _timeLeft(seconds) {
+  const sec = Math.max(0, Math.floor(Number(seconds) || 0));
+  if (sec <= 0) return "Ended";
+  const mins = Math.floor(sec / 60);
+  if (mins < 60) return `${Math.max(1, mins)}m left`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ${mins % 60}m left`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h left`;
+}
+
+function populatePlanBar(license) {
+  // Remaining subscription time: title + countdown + start/end dates.
+  // Nothing connected (or no plan) hides the card instead of faking one.
+  const card = document.getElementById("planBarCard");
+  if (!card) return;
+  try {
+    const plan = String(license?.plan || "").trim();
+    const connected = Boolean(license?.connected) && Boolean(plan);
+    if (!connected) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    const state = String(license?.state || "").toLowerCase();
+    const start = _parseDate(license?.starts_at);
+    const end = _parseDate(license?.expires_at);
+    const total = start && end && end > start ? end - start : 0;
+    const now = Date.now();
+    const pct = total > 0 ? Math.min(100, Math.max(0, ((now - start) / total) * 100)) : 0;
+    const ended = state === "expired" || (end > 0 && now >= end);
+
+    setText("planBarTitle", plan);
+    setText(
+      "planBarLeft",
+      ended
+        ? "Subscription ended"
+        : state === "suspended"
+          ? "Suspended"
+          : state === "warning"
+            ? "Warning — check the Subscription page"
+            : _timeLeft(license?.remaining_seconds)
+    );
+    setText("planBarStart", `Started ${_shortDate(start)}`);
+    setText("planBarEnd", `Ends ${_shortDate(end)}`);
+
+    const fill = document.getElementById("planBarFill");
+    if (fill) fill.style.width = `${ended ? 100 : pct}%`;
+    const track = document.getElementById("planBarTrack");
+    if (track) {
+      track.setAttribute("aria-valuenow", String(Math.round(ended ? 100 : pct)));
+      track.setAttribute("aria-valuemin", "0");
+      track.setAttribute("aria-valuemax", "100");
+    }
+    card.classList.toggle("is-ended", ended);
+    card.classList.toggle("is-warning", !ended && (state === "warning" || state === "suspended"));
+  } catch (_) {}
 }
 
 function populateStats(dash, cost, models, balance) {
@@ -130,17 +203,34 @@ export async function initDashboard() {
   window.addEventListener("x5:models-changed", () => {
     refreshDashboard();
   });
+
+  // A plan bought/changed on the Subscription page re-reads the bar in place.
+  window.addEventListener("x5:license-changed", () => {
+    refreshPlanBar();
+  });
+  window.addEventListener("x5:page-open", (e) => {
+    // navigation.js sends the page name as the detail (a plain string).
+    if (e && e.detail === "dashboard") refreshPlanBar();
+  });
+}
+
+async function refreshPlanBar() {
+  const data = await fetchJson("/api/license/status");
+  populatePlanBar(data && data.license ? data.license : data);
 }
 
 export async function refreshDashboard() {
   if (!document.getElementById("statRequests")) return;
 
-  const [dash, cost, models, balance] = await Promise.all([
+  const [dash, cost, models, balance, license] = await Promise.all([
     fetchJson("/api/dashboard"),
     fetchJson("/api/cost"),
     fetchJson("/api/models"),
     fetchJson("/api/balance"),
+    fetchJson("/api/license/status"),
   ]);
   // Always render (even on partial failure): honest empty states.
   populateStats(dash, cost, models, balance);
+  // The endpoint answers {ok, license}; a failed fetch leaves the bar as is.
+  populatePlanBar(license && license.license ? license.license : license);
 }

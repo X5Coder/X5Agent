@@ -97,6 +97,46 @@ on first run (deltas only, resume on restart) and is used offline after.
 
 ---
 
+## License
+
+The agent runs only with a valid license. Open **Settings → License** in the
+console, sign in with your subscription account, and the subscription allows
+this device to run the agent. No account yet? Use **Create account** in the
+same card — the account and its 7-day trial start immediately (no email
+confirmation step). One account is active on one device at a time. The license
+is checked at startup and every 10 minutes, and the card shows the state,
+plan, remaining time and the exact blocking reason.
+
+**Subscription page** (the nav entry directly above Settings) shows the current
+plan and sells the paid plans. Right after **Create account** it opens itself
+with a "Step 2 of 2" banner so the plan step is the next thing you see; paying
+opens the provider page in a new tab and the page follows the payment until the
+plan is live. The provider is behind the license server, so the console only
+asks for a checkout session — today that is the sandbox provider (charges
+nothing, stores no card data), later the same flow runs against a real provider.
+Buying the same plan again extends it; a different plan replaces it.
+
+- **Server URL:** `X5_LICENSE_SERVER_URL` (defaults to the current test
+  deployment). Use an `https://` endpoint in production.
+- **Plain HTTP:** allowed for the current test deployment only. Set
+  `X5_LICENSE_ALLOW_HTTP=0` once TLS is in place; the client then refuses
+  `http://` so a password or token is never sent in clear text.
+- **State:** `X5Agent/Data/database/license.json` holds the refresh token.
+  Treat it as a secret and never copy it between machines.
+- **Tests:** `X5_LICENSE_BYPASS=1` is honored only inside an active pytest
+  run, so it cannot disable licensing in production.
+
+The console **owner** login (the gate for the web page itself) is separate
+from the license account. It is set during install; to replace it, run
+`python scripts/set_owner.py` on the machine (interactive, or
+`X5_EMAIL`/`X5_PASSWORD`). The console no longer exposes a password-change
+form.
+
+The central license server (FastAPI + PostgreSQL) is a separate deployment —
+see `license-server/README.md` at the repository root.
+
+---
+
 ## Models
 
 The only built-in model is the hidden embedding model:

@@ -2,7 +2,7 @@
   "hash": "2afc2e92ba88aedc86b1ea958f562dd6069d99f7e0b46f893e2a445d3f5d2979",
   "model_id": "embedding-model",
   "model_path": "embedding_model",
-  "updated_at": "2026-10-17T23:18:32Z",
+  "updated_at": "2026-10-20T10:09:09Z",
   "triggers": [
     {
       "name": "filesystem_file_modified",

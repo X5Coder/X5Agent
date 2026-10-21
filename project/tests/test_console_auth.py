@@ -145,3 +145,209 @@ def test_auth_status_keeps_the_owner_email_private(monkeypatch):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_browser_setup_creates_the_owner_once(tmp_path, monkeypatch):
+    """First run: the browser creates the owner once, then setup is closed."""
+    import json
+    import socket
+    import threading
+    import time
+
+    from web.server import server as S
+
+    # Licensing bypass: this test is about the owner record, not the network.
+    monkeypatch.setenv("X5_LICENSE_BYPASS", "1")
+    target = {"path": tmp_path / "console_auth.json"}
+    monkeypatch.setattr(ca, "owner_path", lambda path=None: path or target["path"])
+    monkeypatch.setattr(ca, "create_session", lambda: "test-session")
+
+    httpd = S.ThreadedServer(("127.0.0.1", 0), S.DashboardHandler)
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    def post(body: dict):
+        payload = json.dumps(body).encode()
+        head = ("POST /api/auth/setup HTTP/1.1\r\nHost: t\r\n"
+                "Content-Type: application/json\r\n"
+                f"Content-Length: {len(payload)}\r\n\r\n").encode()
+        sock = socket.create_connection(("127.0.0.1", port), timeout=5)
+        try:
+            sock.sendall(head + payload)
+            chunks = []
+            deadline = time.time() + 5
+            while time.time() < deadline:
+                part = sock.recv(65536)
+                if not part:
+                    break
+                chunks.append(part)
+            raw = b"".join(chunks)
+        finally:
+            sock.close()
+        head_raw, _, body_raw = raw.partition(b"\r\n\r\n")
+        status_line = head_raw.split(b"\r\n")[0]
+        return status_line, head_raw, json.loads(body_raw or b"{}")
+
+    try:
+        line, head_raw, body = post({"email": "Owner@Gmail.com", "password": "SecretPass1"})
+        assert b"200" in line, line
+        assert body.get("ok") is True and body.get("email") == "owner@gmail.com", body
+        assert b"x5sess=test-session" in head_raw, head_raw[:400]
+        assert target["path"].exists(), "owner record must be written"
+
+        # Create-once: a second creation is refused and the record is untouched.
+        line, _, _ = post({"email": "other@gmail.com", "password": "OtherPass2"})
+        assert b"409" in line, line
+        assert ca.owner_email(target["path"]) == "owner@gmail.com"
+
+        # Invalid credentials never create a record.
+        target["path"] = tmp_path / "fresh.json"
+        line, _, body = post({"email": "not-an-email", "password": "short"})
+        assert b"422" in line, line
+        assert body.get("error"), body
+        assert not target["path"].exists()
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_startup_boots_in_first_run_mode(tmp_path, monkeypatch):
+    """No owner + no env + no TTY: the server starts so /login.html can create it."""
+    from web.server import server as S
+
+    record = tmp_path / "console_auth.json"
+    monkeypatch.setattr(ca, "owner_path", lambda path=None: path or record)
+    monkeypatch.delenv("X5_EMAIL", raising=False)
+    monkeypatch.delenv("X5_PASSWORD", raising=False)
+    assert S._ensure_owner_from_terminal() is True
+    assert not record.exists(), "booting must not create anything by itself"
+
+
+# ------------------------------------------------- first-run license account
+
+
+def _boot(monkeypatch):
+    import threading
+
+    from web.server import server as S
+
+    httpd = S.ThreadedServer(("127.0.0.1", 0), S.DashboardHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd, httpd.server_address[1]
+
+
+def _request(port: int, method: str, path: str, body: dict | None = None,
+             cookie: str = ""):
+    import json
+    import socket
+    import time
+
+    payload = json.dumps(body).encode() if body is not None else b""
+    head = f"{method} {path} HTTP/1.1\r\nHost: t\r\n"
+    if cookie:
+        head += f"Cookie: {cookie}\r\n"
+    if body is not None:
+        head += "Content-Type: application/json\r\n"
+        head += f"Content-Length: {len(payload)}\r\n"
+    sock = socket.create_connection(("127.0.0.1", port), timeout=5)
+    try:
+        sock.sendall(head.encode() + b"\r\n" + payload)
+        chunks = []
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            part = sock.recv(65536)
+            if not part:
+                break
+            chunks.append(part)
+        raw = b"".join(chunks)
+    finally:
+        sock.close()
+    head_raw, _, body_raw = raw.partition(b"\r\n\r\n")
+    return head_raw, body_raw
+
+
+def test_setup_registers_the_license_account_first(tmp_path, monkeypatch):
+    """A console owner is only created when the license server accepted it."""
+    import json
+
+    from core.licensing import LicenseError, license_service
+    from web.server import server as S
+
+    target = tmp_path / "console_auth.json"
+    monkeypatch.setattr(ca, "owner_path", lambda path=None: path or target)
+    monkeypatch.setattr(ca, "create_session", lambda: "test-session")
+    monkeypatch.delenv("X5_LICENSE_BYPASS", raising=False)
+
+    calls: list[tuple] = []
+    monkeypatch.setattr(license_service, "register",
+                        lambda email, pw: calls.append(("register", email, pw)))
+
+    def refuse(*_a, **_k):
+        raise LicenseError("Could not reach the license server. Try again.")
+
+    monkeypatch.setattr(license_service, "login", refuse)
+
+    httpd, port = _boot(monkeypatch)
+    try:
+        # Server refuses -> nothing local is created, the error is readable.
+        monkeypatch.setattr(license_service, "register", refuse)
+        head, body_raw = _request(port, "POST", "/api/auth/setup",
+                                  {"email": "Owner@Gmail.com", "password": "SecretPass1"})
+        assert b"502" in head.split(b"\r\n")[0], head[:200]
+        assert json.loads(body_raw)["license_failed"] is True
+        assert not target.exists(), "a failed signup must not write the owner"
+
+        # Server accepts -> owner + session + next page.
+        monkeypatch.setattr(license_service, "register",
+                            lambda email, pw: calls.append(("register", email, pw)))
+        head, body_raw = _request(port, "POST", "/api/auth/setup",
+                                  {"email": "Owner@Gmail.com", "password": "SecretPass1"})
+        assert b"200" in head.split(b"\r\n")[0], head[:200]
+        body = json.loads(body_raw)
+        assert body["ok"] is True and body["next"] == "/plans.html"
+        assert target.exists()
+        assert calls and calls[-1] == ("register", "owner@gmail.com", "SecretPass1")
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_pages_wait_for_a_plan_choice(monkeypatch):
+    """Signed in without a chosen plan: pages go to /plans.html, APIs stay open."""
+    from web.server import server as S
+
+    monkeypatch.setattr(ca, "is_setup", lambda *a, **k: True)
+    monkeypatch.setattr(ca, "session_valid", lambda token: token == "ok")
+    monkeypatch.setattr(S.DashboardHandler, "_onboarding_needed", lambda self: True)
+
+    httpd, port = _boot(monkeypatch)
+    try:
+        head, _body = _request(port, "GET", "/", cookie="x5sess=ok")
+        assert b"302" in head.split(b"\r\n")[0], head[:200]
+        assert b"Location: /plans.html" in head, head[:400]
+
+        head, _body = _request(port, "GET", "/plans.html", cookie="x5sess=ok")
+        assert b"200" in head.split(b"\r\n")[0], head[:200]
+
+        head, _body = _request(port, "GET", "/api/health", cookie="x5sess=ok")
+        assert b"200" in head.split(b"\r\n")[0], head[:200]
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_plans_page_bounces_once_the_plan_is_chosen(monkeypatch):
+    from web.server import server as S
+
+    monkeypatch.setattr(ca, "is_setup", lambda *a, **k: True)
+    monkeypatch.setattr(ca, "session_valid", lambda token: token == "ok")
+    monkeypatch.setattr(S.DashboardHandler, "_onboarding_needed", lambda self: False)
+
+    httpd, port = _boot(monkeypatch)
+    try:
+        head, _body = _request(port, "GET", "/plans.html", cookie="x5sess=ok")
+        assert b"302" in head.split(b"\r\n")[0], head[:200]
+        assert b"Location: /" in head, head[:400]
+    finally:
+        httpd.shutdown()
+        httpd.server_close()

@@ -389,7 +389,7 @@ export function initStudioPdf() {
         // exactly like the main agent (AI Models + STT dialog).
         if (e && e.data === "x5:open-ai-models-stt") {
           closeStudioOverlay(false);
-          import("./navigation.js?v=14").then((nav) => {
+          import("./navigation.js?v=15").then((nav) => {
             try {
               nav.navigate("ai-models");
             } catch (_) {}

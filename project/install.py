@@ -261,6 +261,22 @@ def _deps_out_of_sync() -> list[str]:
     return problems
 
 
+def _compiled_release() -> bool:
+    """True when this tree ships compiled modules instead of sources."""
+    return (PROJECT_ROOT / "BUILD.json").is_file()
+
+
+def _pip_target() -> tuple[list[str], str]:
+    """pip arguments that install this tree, plus a label for the log.
+
+    A compiled release has no buildable package (and no sources), so it
+    installs the pinned dependency list; a source checkout stays editable.
+    """
+    if _compiled_release() and (PROJECT_ROOT / "requirements.txt").is_file():
+        return ["-r", "requirements.txt"], "pip install -r requirements.txt"
+    return ["-e", "."], "pip install -e ."
+
+
 def ensure_dependencies() -> bool:
     """Install/sync project dependencies (pip install -e .) when needed.
 
@@ -287,7 +303,7 @@ def ensure_dependencies() -> bool:
     """
     missing = _modules_missing(REQUIRED_IMPORTS)
     out_of_sync = _deps_out_of_sync()
-    want_cmd = shutil.which("x5agent") is None
+    want_cmd = shutil.which("x5agent") is None and not _compiled_release()
     if not missing and not out_of_sync and not want_cmd:
         return True
     reasons: list[str] = []
@@ -299,7 +315,8 @@ def ensure_dependencies() -> bool:
         seen.add(key)
         reasons.append(item)
     what = ", ".join(reasons) if reasons else "x5agent command"
-    print(f"  syncing packages: {what} (pip install -e .)...")
+    target_args, target_label = _pip_target()
+    print(f"  syncing packages: {what} ({target_label})...")
     try:
         tool = subprocess.run(
             [sys.executable, "-m", "pip", "install", "-U",
@@ -331,13 +348,13 @@ def ensure_dependencies() -> bool:
                 _warn(f"CPU torch install exited {cpu.returncode} - "
                       "trying full install anyway (slower)")
         proc = subprocess.run(
-            [sys.executable, "-m", "pip", "install", *extra, "-e", "."],
+            [sys.executable, "-m", "pip", "install", *extra, *target_args],
             cwd=str(PROJECT_ROOT), timeout=1800, env=_pip_env(),
         )
         if proc.returncode != 0:
-            print("  ERROR: pip install -e . failed "
+            print(f"  ERROR: {target_label} failed "
                   f"(exit {proc.returncode})", file=sys.stderr)
-            print("  run manually: pip install -e .  (from project/) "
+            print(f"  run manually: {target_label}  (from this folder) "
                   "then re-run install", file=sys.stderr)
             return False
     except subprocess.TimeoutExpired:
@@ -652,13 +669,10 @@ def ensure_resources(hf_token: str = "") -> bool:
         return False
     _ok("embedding model ready")
     try:
-        import importlib.util
+        from core.module_loader import load_from_path
 
         def _load(rel, name):
-            spec = importlib.util.spec_from_file_location(name, str(PROJECT_ROOT / rel))
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)  # type: ignore
-            return mod
+            return load_from_path(PROJECT_ROOT / rel, name)
 
         tools = _load("plugins/tool-discovery/search/store.py", "inst_tools").ensure_embeddings()
         trigs = _load("plugins/trigger-discovery/search/store.py", "inst_trigs").ensure_embeddings()

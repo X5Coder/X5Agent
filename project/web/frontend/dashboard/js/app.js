@@ -5,17 +5,18 @@
 "use strict";
 
 import { initModal, hideBootSplash, animateIn } from "./ui.js?v=13";
-import { initNavigation } from "./navigation.js?v=14";
+import { initNavigation } from "./navigation.js?v=15";
 import { startEvents, whenFirstSync, hasBootCache } from "./events.js?v=7";
 import { initWorkspace } from "./workspace.js?v=23";
-import { initDashboard } from "./dashboard.js?v=16";
+import { initDashboard } from "./dashboard.js?v=17";
 import { initCharts } from "./charts.js?v=23";
-import { initChat } from "./chat.js?v=106";
+import { initChat } from "./chat.js?v=108";
 import { initSchedule } from "./schedule.js?v=27";
 import { initSkills } from "./skills.js?v=10";
 import { initGateway } from "./gateway.js?v=31";
 import { initAiModels } from "./ai_models.js?v=6";
-import { initSettings } from "./settings.js?v=14";
+import { initSettings } from "./settings.js?v=19";
+import { initSubscription, initLicenseGate } from "./subscription.js?v=10";
 import { initStudioPdf } from "./studio_pdf.js?v=12";
 
 // Keeps .app pinned to the real visible area when the mobile keyboard
@@ -134,6 +135,8 @@ async function init() {
       initSchedule(),
       initGateway(),
       initSettings(),
+      initSubscription(),
+      initLicenseGate(),
     ]);
     // Lift when the cached paint is really on screen, not on a fixed timer:
     // a floor keeps the entrance beat readable, a ceiling keeps one slow
@@ -167,6 +170,8 @@ async function init() {
         initSchedule(),
         initGateway(),
         initSettings(),
+        initSubscription(),
+        initLicenseGate(),
       ]),
       watchdog,
     ]);

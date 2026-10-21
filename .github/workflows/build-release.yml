@@ -1,0 +1,115 @@
+name: Build release
+
+# Compiles the source-hidden release trees for every supported platform.
+# Cross-compilation is impossible (a .so/.pyd is tied to one OS + Python ABI),
+# so each target is built on its own runner:
+#   windows-latest  -> x5agent-windows-amd64-full.zip      (Python 3.12)
+#   ubuntu-22.04    -> x5agent-linux-x86_64-full.zip       (Python 3.10, oldest LTS)
+#   ubuntu-24.04    -> x5agent-linux-x86_64-headless.zip   (Python 3.12, no console)
+#   macos-14        -> x5agent-macos-arm64-full.zip        (Python 3.12, Apple silicon)
+#   macos-13        -> x5agent-macos-x86_64-full.zip       (Python 3.12, Intel)
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows-amd64-full
+            python: "3.12"
+            flavor: full
+          - os: ubuntu-22.04
+            label: linux-x86_64-full
+            python: "3.10"
+            flavor: full
+          - os: ubuntu-24.04
+            label: linux-x86_64-headless
+            python: "3.12"
+            flavor: headless
+          - os: macos-14
+            label: macos-arm64-full
+            python: "3.12"
+            flavor: full
+          - os: macos-13
+            label: macos-x86_64-full
+            python: "3.12"
+            flavor: full
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "Cython>=3.0" "setuptools>=68" wheel tomli
+
+      - name: Build
+        run: python project/scripts/build_release.py --out dist --flavor ${{ matrix.flavor }}
+
+      - name: Verify no Python source shipped
+        shell: bash
+        run: |
+          set -e
+          count=$(python - <<'PY'
+          import glob, zipfile
+          total = 0
+          for path in glob.glob("dist/*.zip"):
+              with zipfile.ZipFile(path) as z:
+                  total += sum(1 for n in z.namelist() if n.endswith(".py"))
+          print(total)
+          PY
+          )
+          echo "python files in archives: $count"
+          test "$count" = "0"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x5agent-${{ matrix.label }}
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-installer:
+    name: windows-installer
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: x5agent-windows-amd64-full
+          path: dist
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $zip = (Get-ChildItem dist -Filter *.zip | Select-Object -First 1).FullName
+          ./installer/build-installer.ps1 -ReleaseZip $zip -Iscc "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x5agent-windows-installer
+          path: installer/out/*.exe
+          if-no-files-found: error
+          retention-days: 30

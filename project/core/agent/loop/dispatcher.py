@@ -60,6 +60,7 @@ _DISCOVERABLE_MAP = {
     "studio_read": "plugins.core_plugins.studio_read.tool",
     "svg_maker": "plugins.core_plugins.svg_maker.tool",
     "image_search": "plugins.core_plugins.image_search.tool",
+    "reply_assembly": "plugins.core_plugins.reply_assembly.tool",
 }
 
 _ALL = {**_CORE_MAP, **_DISCOVERABLE_MAP}
@@ -81,14 +82,14 @@ def _load_module(dotted: str):
     import importlib
     if str(PROJECT_ROOT) not in sys.path:
         sys.path.insert(0, str(PROJECT_ROOT))
-    # Handle dash paths via file location (only tool-discovery)
+    # Handle dash paths via file location (only tool-discovery). A compiled
+    # release ships store.pyd instead of store.py, so the loader resolves both.
     if "tool-discovery" in dotted:
-        p = PROJECT_ROOT / "plugins" / "tool-discovery" / "search" / "store.py"
-        spec = importlib.util.spec_from_file_location("store", str(p))
-        mod = importlib.util.module_from_spec(spec)
-        assert spec and spec.loader
-        spec.loader.exec_module(mod)
-        return mod
+        from core.module_loader import load_from_path
+
+        return load_from_path(
+            PROJECT_ROOT / "plugins" / "tool-discovery" / "search" / "store.py", "store"
+        )
     # Normal case: dotted is importable package now that we added __init__.py
     try:
         return importlib.import_module(dotted)
@@ -101,22 +102,21 @@ def _load_module(dotted: str):
             f = PROJECT_ROOT / "plugins" / parts[1] / parts[2] / "tool.py"
         else:
             f = PROJECT_ROOT / "/".join(parts[:-1]) / "tool.py"
-        module_name = dotted.replace(".", "_").replace("-", "_")
-        spec = importlib.util.spec_from_file_location(module_name, str(f))
-        if spec is None or spec.loader is None:
-            raise ImportError(f"Cannot load {dotted} from {f}")
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
+        from core.module_loader import load_from_path
+
+        return load_from_path(f, dotted.replace(".", "_").replace("-", "_"))
 
 
-def execute_tool(name: str, arguments: dict | str | None, cancel_flag: Any = None) -> dict:
+def execute_tool(name: str, arguments: dict | str | None, cancel_flag: Any = None,
+                 part_index: Any = None) -> dict:
     """
     Execute tool by name with validated arguments.
     Returns dict with tool output (or error) - never raises unhandled, loop continues.
     cancel_flag (optional threading.Event): forwarded ONLY to tools whose
     execute() accepts it (long-running tools abort on STOP); all other
     tools are called exactly as before.
+    part_index (optional int): the loop's running part number, forwarded ONLY
+    to tools whose execute() accepts it (reply_assembly labels its answer).
     """
     if not isinstance(name, str) or not name.strip():
         return {"error": "tool name missing", "tool": name}
@@ -146,8 +146,10 @@ def execute_tool(name: str, arguments: dict | str | None, cancel_flag: Any = Non
     # own trial-build + the 200KB store cap are the real guards). Without
     # this, every full-code delivery would be rejected and no design could
     # ever land.
+    # reply_assembly is exempt too: one part of a very long reply is a legit
+    # payload (the tool's own 30000-char cap + the loop's total cap guard it).
     try:
-        if n != "studio_page" and len(json.dumps(args, ensure_ascii=False)) > 10000:
+        if n not in ("studio_page", "reply_assembly") and len(json.dumps(args, ensure_ascii=False)) > 10000:
             return {"error": f"Tool {n} arguments too large (max 10000 chars)", "tool": n}
     except Exception:
         pass
@@ -235,6 +237,22 @@ def execute_tool(name: str, arguments: dict | str | None, cancel_flag: Any = Non
                 try:
                     call_args = {**(call_args if isinstance(call_args, dict) else {}),
                                  "cancel_flag": cancel_flag}
+                except Exception:
+                    pass
+        # Reply parts: the loop owns the running part number (the model never
+        # supplies it). Forwarded only when the tool accepts it.
+        if part_index is not None:
+            try:
+                import inspect as _inspect3
+                _params3 = _inspect3.signature(mod.execute).parameters
+                _ok3 = ("part_index" in _params3) or any(
+                    p.kind == _inspect3.Parameter.VAR_KEYWORD for p in _params3.values())
+            except Exception:
+                _ok3 = False
+            if _ok3 and not (isinstance(call_args, dict) and "part_index" in call_args):
+                try:
+                    call_args = {**(call_args if isinstance(call_args, dict) else {}),
+                                 "part_index": part_index}
                 except Exception:
                     pass
         # execute with unpacked args - validates inside tool

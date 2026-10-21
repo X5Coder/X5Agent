@@ -17,3 +17,13 @@ import tempfile
 
 if not os.environ.get("X5_VECTOR_DB_DIR"):
     os.environ["X5_VECTOR_DB_DIR"] = tempfile.mkdtemp(prefix="x5-vector-test-")
+
+# Licensing is verified against the central server. Tests never touch it:
+# the bypass flag only works while PYTEST_CURRENT_TEST is set (see
+# core/licensing/config.py), and the state file is redirected to temp so a
+# test can never read or overwrite the real X5Agent/Data session.
+os.environ.setdefault("X5_LICENSE_BYPASS", "1")
+if not os.environ.get("X5_LICENSE_STATE_PATH"):
+    os.environ["X5_LICENSE_STATE_PATH"] = os.path.join(
+        tempfile.mkdtemp(prefix="x5-license-test-"), "license.json"
+    )

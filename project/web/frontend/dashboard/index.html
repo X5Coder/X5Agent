@@ -38,7 +38,7 @@
   <link rel="stylesheet" href="/css/tokens.css?v=14" />
   <link rel="stylesheet" href="/css/base.css?v=13" />
   <link rel="stylesheet" href="/css/layout.css?v=21" />
-  <link rel="stylesheet" href="/css/components.css?v=145" />
+  <link rel="stylesheet" href="/css/components.css?v=157" />
   <link rel="stylesheet" href="/css/responsive.css?v=25" />
 </head>
 <body>
@@ -189,6 +189,13 @@
 
         <div class="nav-divider" aria-hidden="true"></div>
 
+        <button class="nav-item" data-nav="subscription" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="5" width="20" height="14" rx="2.5" /><path d="M2 10h20" /><path d="M6 15h4" />
+          </svg>
+          <span>Subscription</span>
+        </button>
+
         <button class="nav-item" data-nav="settings" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3" />
@@ -279,6 +286,23 @@
               </div>
               <div class="stat-value small" id="statModel">—</div>
               <div class="stat-meta" id="statModelMeta">Loading…</div>
+            </div>
+          </div>
+
+          <div class="card plan-bar" data-anim id="planBarCard" hidden>
+            <div class="plan-bar-head">
+              <div class="plan-bar-text">
+                <span class="stat-label">Subscription</span>
+                <h3 id="planBarTitle">—</h3>
+              </div>
+              <span class="plan-bar-left" id="planBarLeft">—</span>
+            </div>
+            <div class="plan-bar-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="planBarTrack">
+              <div class="plan-bar-fill" id="planBarFill"></div>
+            </div>
+            <div class="plan-bar-foot">
+              <span id="planBarStart">—</span>
+              <span id="planBarEnd">—</span>
             </div>
           </div>
 
@@ -533,33 +557,56 @@
           <div class="grid-cards" id="aiModelsGrid"></div>
         </section>
 
+        <!-- ============ SUBSCRIPTION (same plan cards as the first-run page) ============ -->
+        <section class="page" data-page="subscription">
+          <div class="pricing-page">
+            <div class="sub-tool-row" data-anim>
+              <button class="sub-tool-btn" id="subToolBtn" type="button" disabled aria-disabled="true">
+                <span class="sub-tool-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="3" /><path d="M2.5 10h19" /><path d="M6.5 14.5h4" /></svg>
+                </span>
+                <span class="sub-tool-text">
+                  <span class="sub-tool-name">My Subscriptions</span>
+                  <span class="sub-tool-hint">Plans, renewals and payment history in one place</span>
+                </span>
+                <span class="sub-tool-soon">Soon</span>
+              </button>
+            </div>
+
+            <!-- Step 1 (only when the license session is gone): the account itself.
+                 The console stays locked until this account exists and is live. -->
+            <div class="card sub-auth" id="subAuth" hidden data-anim>
+              <div class="sub-auth-copy">
+                <h3 id="subAuthTitle">Create your license account</h3>
+                <p id="subAuthText">
+                  This account is what the admin panel sees. Your 7-day trial starts
+                  immediately, on this device.
+                </p>
+              </div>
+              <form class="sub-auth-form" id="subAuthForm" novalidate>
+                <label class="sub-field">
+                  <span>Email</span>
+                  <input id="subAuthEmail" type="email" autocomplete="email" spellcheck="false" placeholder="you@gmail.com" />
+                </label>
+                <label class="sub-field">
+                  <span>Password</span>
+                  <input id="subAuthPassword" type="password" autocomplete="new-password" placeholder="At least 8 characters" />
+                </label>
+                <button class="btn btn-primary sub-auth-submit" id="subAuthSubmit" type="submit">Create account</button>
+                <p class="sub-auth-msg" id="subAuthMsg" hidden></p>
+                <button class="sub-skip" id="subAuthSwitch" type="button">Already have an account? Sign in</button>
+              </form>
+            </div>
+
+            <div class="sub-plans" id="subPlans" aria-live="polite">
+              <p class="sub-loading">Loading plans…</p>
+            </div>
+          </div>
+        </section>
+
         <!-- ============ SETTINGS ============ -->
         <section class="page" data-page="settings">
           <div class="settings-stack">
-            <div class="card settings-card" data-anim>
-              <div class="settings-head">
-                <div class="settings-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-4 1.5-4-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.6 4.6 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.6 4.6 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.5.6-.6 1-.5 2V21" /></svg>
-                </div>
-                <div class="settings-head-text">
-                  <h3>Project</h3>
-                  <p>Source repository and installed console version.</p>
-                </div>
-              </div>
-              <div class="settings-row proj-row">
-                <span class="proj-mark" aria-hidden="true">
-                  <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="6" y="6" width="20" height="20" rx="4" fill="#fff" />
-                  </svg>
-                </span>
-                <span class="proj-meta">
-                  <a class="settings-link" href="https://github.com/X5Coder/X5Agent" target="_blank" rel="noopener">X5Coder / X5Agent</a>
-                  <span class="proj-sub">Installed console version</span>
-                </span>
-                <span class="settings-version" id="projVersion">v0.7.0</span>
-              </div>
-            </div>
-
             <div class="card settings-card" data-anim>
               <div class="settings-head">
                 <div class="settings-icon" aria-hidden="true">
@@ -605,34 +652,6 @@
                 <button class="glass-btn settings-btn" id="restorePickBtn" type="button">Restore…</button>
                 <input type="file" id="restoreFileInput" accept=".zip,application/zip" hidden />
               </div>
-            </div>
-
-            <div class="card settings-card" data-anim>
-              <div class="settings-head">
-                <div class="settings-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-                </div>
-                <div class="settings-head-text">
-                  <h3>Security</h3>
-                  <p>Update the password used to sign in to this console on this device.</p>
-                </div>
-              </div>
-              <form id="pwForm" method="post" action="#">
-              <input type="text" id="pwUser" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" readonly style="position:absolute;opacity:0;height:0;width:0;pointer-events:none;" />
-              <div class="field">
-                <label for="pwOld">Current password</label>
-                <input class="input" type="password" id="pwOld" placeholder="••••••••" autocomplete="current-password" />
-              </div>
-              <div class="field">
-                <label for="pwNew">New password</label>
-                <input class="input" type="password" id="pwNew" placeholder="••••••••" autocomplete="new-password" />
-              </div>
-              <div class="field">
-                <label for="pwConfirm">Confirm new password</label>
-                <input class="input" type="password" id="pwConfirm" placeholder="••••••••" autocomplete="new-password" />
-              </div>
-              <button class="btn btn-primary settings-btn" id="changePwBtn" type="submit">Change password</button>
-              </form>
             </div>
 
             <div class="card settings-card" data-anim>
@@ -683,7 +702,7 @@
       try {
         if (localStorage.getItem("x5_sidebar") !== "expanded") document.body.classList.add("sidebar-collapsed");
         var seg = (location.pathname || "/").replace(/\/+$/, "").split("/").pop() || "";
-        var pages = ["dashboard", "agent", "workspace", "gateway", "skills", "ai-models", "settings"];
+        var pages = ["dashboard", "agent", "workspace", "gateway", "skills", "ai-models", "subscription", "settings"];
         var page = seg === "" || seg === "index.html" ? "agent" : seg;
         if (pages.indexOf(page) < 0) page = "agent";
         if (page !== "agent") {
@@ -700,6 +719,7 @@
             gateway: ["WhatsApp gateway", "Connect and manage your WhatsApp agent"],
             skills: ["Skills", "Reusable instructions for your agent"],
             "ai-models": ["AI Models", "Connect any AI model"],
+            subscription: ["Subscription", "Your plan, payment and renewal"],
             settings: ["Settings", "Preferences and account"]
           }[page];
           if (titles) {
@@ -730,6 +750,6 @@
   <div class="chart-tip" id="chartTip"></div>
   <div class="toast-wrap" id="toastWrap"></div>
 
-  <script type="module" src="/js/app.js?v=89"></script>
+  <script type="module" src="/js/app.js?v=104"></script>
 </body>
 </html>

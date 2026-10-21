@@ -1,0 +1,41 @@
+X5AGENT — END USER LICENSE AGREEMENT (EULA)
+
+1. GRANT OF LICENSE
+   You receive a personal, non-exclusive, non-transferable license to install
+   and use X5Agent on the devices you own. One subscription covers one device
+   at a time; a new sign-in moves the subscription to the newest device.
+
+2. RESTRICTIONS
+   The software is licensed, not sold. You may not reverse engineer,
+   decompile, disassemble, redistribute, sublicense, rent, lease or sell the
+   software, or remove any proprietary notices, except where such restriction
+   is prohibited by applicable law.
+
+3. YOUR DATA
+   X5Agent stores everything it knows about you on this computer, inside the
+   X5Agent folder you choose during installation. The software sends to the
+   license server only what is needed to keep a subscription working
+   (account e-mail, a machine fingerprint and build information). Your files,
+   conversations and memories are never uploaded to the license server.
+
+4. AI MODEL CONNECTIONS
+   X5Agent connects to AI model providers that you configure yourself. Your
+   use of those providers is governed by their own terms and pricing. You are
+   responsible for the API keys you enter and for the costs they incur.
+
+5. ACCEPTABLE USE
+   You are responsible for the commands and automations you run. Do not use
+   the software to break the law, to attack systems you do not own, or to
+   process data you have no right to process.
+
+6. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. THE
+   AUTHORS ARE NOT LIABLE FOR ANY DAMAGES ARISING FROM ITS USE, INCLUDING
+   LOST DATA, LOST PROFITS OR SERVICE INTERRUPTION.
+
+7. UPDATES AND TERMINATION
+   Updates may change or remove features. The license ends if you materially
+   breach this agreement; on termination you must stop using and remove the
+   software. Sections 2, 6 and 7 survive termination.
+
+By clicking "I accept" you agree to these terms.

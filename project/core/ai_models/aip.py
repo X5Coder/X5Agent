@@ -540,7 +540,7 @@ class _Runner:
             v = self.run(arg)
             return bool(v) if not isinstance(v, str) else v.lower() in ("1", "true", "yes")
         if op == "merge":
-            out: dict = {}
+            out = {}
             for branch in arg or []:
                 v = self.run(branch)
                 if isinstance(v, dict):
