@@ -235,3 +235,26 @@ def test_bootstrap_refuses_a_tampered_manifest(tmp_path, monkeypatch):
 
     assert module._restore_guard_files() is False
     assert not missing.exists()
+
+def test_repair_cli_refuses_a_tampered_policy_without_a_traceback(tmp_path, capsys):
+    source = _repo_root()
+    target = tmp_path / "repo"
+    shutil.copytree(source / "project" / "agent", target / "project" / "agent")
+    shutil.copytree(
+        source / "project" / "core" / "agent_guard",
+        target / "project" / "core" / "agent_guard",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    policy_path = target / "project" / "agent" / "policy.json"
+    data = json.loads(policy_path.read_text(encoding="utf-8"))
+    data["repo"] = "attacker/repo"
+    policy_path.write_text(json.dumps(data), encoding="utf-8")
+
+    from scripts import agent_repair
+
+    code = agent_repair.main(["--root", str(target), "--repair"])
+    captured = capsys.readouterr()
+
+    assert code == 1
+    assert "trust verification refused" in captured.out
+    assert "Traceback" not in captured.out
