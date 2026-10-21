@@ -1,13 +1,13 @@
 {
   "schema": "x5-agent-manifest/1",
   "version": "0.84.0",
-  "commit": "632afbab44468e704172d64f9418374f3eb479a6",
-  "build": "632afbab44468e704172d64f9418374f3eb479a6",
+  "commit": "f028541e7c87ad93912d28a762b24180ce1e027f",
+  "build": "f028541e7c87ad93912d28a762b24180ce1e027f",
   "release_key_id": "release-2026-01",
-  "policy_hash": "4b013f8f8249e6d8b305bc8f2ed7fd50ee31d1046dca36e3354f84211b0a7e9d",
+  "policy_hash": "97147c746b347c763db3013aef271c1ce5e647ec4e694a61e16713410baca030",
   "key_id": "release-2026-01",
-  "generated_at": "2026-10-21T09:44:10Z",
-  "root": "1b2f1f6a0fa734d8ae967deebf0637fd887f0daf500fa88858db033745a76019",
+  "generated_at": "2026-10-21T09:44:49Z",
+  "root": "dc279e85c451849a315669b15324f162ff307c14d935e3ec889e8d47684c4a7f",
   "files": [
     {
       "path": "agent_boot.py",
