@@ -1,13 +1,13 @@
 {
   "schema": "x5-agent-manifest/1",
-  "version": "0.86.0",
-  "commit": "1f9273d0c194a1853f3a4be62c1eb423790b7f85",
-  "build": "1f9273d0c194a1853f3a4be62c1eb423790b7f85",
+  "version": "0.87.0",
+  "commit": "a11b2ed993b017e0da6436af015526d57bb6b367",
+  "build": "a11b2ed993b017e0da6436af015526d57bb6b367",
   "release_key_id": "release-2026-01",
   "policy_hash": "97147c746b347c763db3013aef271c1ce5e647ec4e694a61e16713410baca030",
   "key_id": "release-2026-01",
-  "generated_at": "2026-10-21T11:04:26Z",
-  "root": "d145ca91469f59e7f8663897d20bf2d748ddcc5dfd95e0e7de1c4ee5021adf56",
+  "generated_at": "2026-10-21T11:18:36Z",
+  "root": "06978ecc17756ce2144694020c98d0d3705f78c927768e43a234691f6a36bca2",
   "files": [
     {
       "path": "agent_boot.py",
@@ -60,10 +60,10 @@
     },
     {
       "path": "project/X5Browser/tools.py",
-      "sha256": "9e4d6bca86d8b4a4bd6612e7b1f0277627179e1cd4b91ad4afd5ca71842312ab",
-      "size": 28345,
+      "sha256": "04d2440d751cc2778a7a0e5ef6f1143f74211b23e4d068e2d024a0a8916f8e20",
+      "size": 30763,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 3
     },
     {
       "path": "project/core/__init__.py",
@@ -550,10 +550,10 @@
     },
     {
       "path": "project/core/tools/document_search/tool.py",
-      "sha256": "972ad7eb90cd5317bfc30f095a923c9ae09438af26f4c1f32d0745653decebb4",
-      "size": 1863,
+      "sha256": "8ea0f99d9969443eaf8f3fa7974c1d633ccc00e7222e7965364e6a54b26dc181",
+      "size": 3513,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/tools/question/__init__.py",
@@ -578,10 +578,10 @@
     },
     {
       "path": "project/core/tools/question/tool.py",
-      "sha256": "a9a2828797a775bb401a2da17817f31d8df67ee36e18a415ec763813e252f37f",
-      "size": 1996,
+      "sha256": "510299bcdaa828fdd57ba60d369f440bf9df9c01b1c45cc92a774c2123f36041",
+      "size": 3518,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/tools/registry.py",
@@ -613,10 +613,10 @@
     },
     {
       "path": "project/core/tools/scheduler/tool.py",
-      "sha256": "569183d0146066adccd3d63893bf4b1b32a3537bd614a0e3022c2cdb8fae6eae",
-      "size": 22894,
+      "sha256": "856099e05881204ed60fd678a7d3383af657a3ba8e43d8cafa60b3e028bb8657",
+      "size": 24572,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/tools/skills_search/__init__.py",
@@ -641,10 +641,10 @@
     },
     {
       "path": "project/core/tools/skills_search/tool.py",
-      "sha256": "ec9a1c7728506e4b2b44ece5f779001adff93a47aeb7aed2a4c8fe4c766d7cf6",
-      "size": 4400,
+      "sha256": "ba20c04671d27b5194c3f55173d92c5eda6e131ff590f3a5bdc4ad2e33eb1648",
+      "size": 6030,
       "mode": "100644",
-      "notice_count": 1
+      "notice_count": 3
     },
     {
       "path": "project/core/tools/skills_view/__init__.py",
@@ -669,10 +669,10 @@
     },
     {
       "path": "project/core/tools/skills_view/tool.py",
-      "sha256": "c66a0b3ddcb3d9bf789614b3a42d62ba7f0844efffce35e2d9563c62276d9bfb",
-      "size": 3843,
+      "sha256": "98da6ce36ceec2552d88d7555ebab70825203833536b9e61fc4ee374a546f493",
+      "size": 5527,
       "mode": "100644",
-      "notice_count": 1
+      "notice_count": 3
     },
     {
       "path": "project/core/tools/terminal/__init__.py",
@@ -697,10 +697,10 @@
     },
     {
       "path": "project/core/tools/terminal/tool.py",
-      "sha256": "9eb8ddf7e5ad76d3eb6bda61628191250d8b8470025f1298403b1454332d36cc",
-      "size": 10619,
+      "sha256": "32ed727f81a2ac408024901383aed2404434a6e8dd80896378a2c802f6abd94b",
+      "size": 12271,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/tools/todo_list/__init__.py",
@@ -725,10 +725,10 @@
     },
     {
       "path": "project/core/tools/todo_list/tool.py",
-      "sha256": "9fc4edf377f894c9fe5f5d9a35294c98544fdc3e4cb9475a4637fad57c3ad97d",
-      "size": 3064,
+      "sha256": "09e6f46c27bc525cd5395da9b2d86ad65f0dc9a9d18b75af1380e5fd0229f1e0",
+      "size": 4678,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/tools/tool_search/__init__.py",
@@ -753,10 +753,10 @@
     },
     {
       "path": "project/core/tools/tool_search/tool.py",
-      "sha256": "a53a1c3ae2827bce03252b87e788bb82f2a42b5cd0091b71e8daaa0aa1d1bdf3",
-      "size": 2894,
+      "sha256": "acdafd06a47359a1dbe43327b6f09d94137f61d0cabe90f2efbb29e328d17b3b",
+      "size": 4508,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/tools/trigger/__init__.py",
@@ -774,10 +774,10 @@
     },
     {
       "path": "project/core/tools/trigger/tool.py",
-      "sha256": "6236e8771b8f93dec1670e01b2a0baa3e864f0ac9b63b5d1061fd022228bc227",
-      "size": 34561,
+      "sha256": "d5a471a3b548aad799b29c0d4bfc2d96cab871bbaa072cc3f6ed5d10863c8d0c",
+      "size": 36135,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/tools/trigger_search/__init__.py",
@@ -802,10 +802,10 @@
     },
     {
       "path": "project/core/tools/trigger_search/tool.py",
-      "sha256": "04b29d4dce06e588573fb057f85025f6dd1aa2cb187d72e7953424fb3460021f",
-      "size": 3777,
+      "sha256": "1668ce0c5f18bdacf63016c6296d42d828d2cab82df090edaf50a536b51122a3",
+      "size": 5315,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/tools/vector_chat_search/__init__.py",
@@ -830,10 +830,10 @@
     },
     {
       "path": "project/core/tools/vector_chat_search/tool.py",
-      "sha256": "6902e660d287998f8699ee8bb071f171093289f22ba76fda14d457842ec49d32",
-      "size": 2954,
+      "sha256": "e19f1c4382bd1b1d1d6c0ba42d337b67db3344366b6d2a64267c13f07481e66d",
+      "size": 4560,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/tools/wait/__init__.py",
@@ -858,10 +858,10 @@
     },
     {
       "path": "project/core/tools/wait/tool.py",
-      "sha256": "2977b4accfe1fa19913cd58696a6d4cc831f6c6a57003e4a297771dc02cbf68f",
-      "size": 1892,
+      "sha256": "89058b1ae9946479aec92ca820c163f0ff320de94bb4bd4f80a860e634df8492",
+      "size": 3446,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/tools/workspace/__init__.py",
@@ -886,10 +886,10 @@
     },
     {
       "path": "project/core/tools/workspace/tool.py",
-      "sha256": "78c762be4c203d31fe3a0658051e9062371ca8fc8e0c7402616551003055dbf7",
-      "size": 14021,
+      "sha256": "ec907ecaea0b953ba4f698ae729bd6ab79be84174cc22c7f5e238c8e82b9f832",
+      "size": 20473,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 8
     },
     {
       "path": "project/core/trigger/__init__.py",
@@ -1089,10 +1089,10 @@
     },
     {
       "path": "project/plugins/core_plugins/audio_extract/tool.py",
-      "sha256": "757698600fa611c3f0f288854f74351af3b1642edf53ad33cb3e159cc1b2d739",
-      "size": 9010,
+      "sha256": "ffa227d23cc27be5487eef3b4e0037ac971c4b65dfd81f4c2dbbdde3c2f41970",
+      "size": 10674,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/embedding_memory/__init__.py",
@@ -1117,10 +1117,10 @@
     },
     {
       "path": "project/plugins/core_plugins/embedding_memory/tool.py",
-      "sha256": "be6c33e3c0a040bc56315c301023e1e367608113459d514c77930dad891cf748",
-      "size": 6410,
+      "sha256": "aad9876f014ea5070c3cebe78ac72500ba3722492a62a04b4f60257a3067b967",
+      "size": 8826,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 3
     },
     {
       "path": "project/plugins/core_plugins/file_metadata/__init__.py",
@@ -1145,10 +1145,10 @@
     },
     {
       "path": "project/plugins/core_plugins/file_metadata/tool.py",
-      "sha256": "aae68b3203405e62327bf598f7b440b57729808c863599019f8ebe83cef006bf",
-      "size": 13257,
+      "sha256": "be516e1e4f59e610d1a7cc958b174675808df44894703c5049898da272f23562",
+      "size": 14845,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/file_to_base64/__init__.py",
@@ -1173,10 +1173,10 @@
     },
     {
       "path": "project/plugins/core_plugins/file_to_base64/tool.py",
-      "sha256": "4d71f7c3d122ed49f4408bee153b9ce52ce4760b259cfc6d62d180d988cd54d3",
-      "size": 5366,
+      "sha256": "19ac405e78ae807da3b795915a0c4b1f8bba03e5cf9292ad78b741e1e337c78c",
+      "size": 6910,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/generate_image/__init__.py",
@@ -1201,10 +1201,10 @@
     },
     {
       "path": "project/plugins/core_plugins/generate_image/tool.py",
-      "sha256": "225d01218577ad63c34f7a46eb976018a0f7b8baed77ffd6aa48da3ef1d7db91",
-      "size": 4123,
+      "sha256": "13c37c304ac2d6b19fca02cd8b9646adc6388a0eee6d400a4d66839c72acdd5a",
+      "size": 5771,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/http_request/__init__.py",
@@ -1229,10 +1229,10 @@
     },
     {
       "path": "project/plugins/core_plugins/http_request/tool.py",
-      "sha256": "9476ddb3b6fdca6b0d91370e2d0fdf891ce5dc0d540e996765a326a9b2c381a8",
-      "size": 11635,
+      "sha256": "deb34addcad195b255f40557ffe9e01a2859325d879adb06edffde81e8f1c6e8",
+      "size": 13245,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/image_search/__init__.py",
@@ -1257,10 +1257,10 @@
     },
     {
       "path": "project/plugins/core_plugins/image_search/tool.py",
-      "sha256": "3c72196ee8044c4eb1de397ada97216ec989f89776f693691ae479a9fcb7b99b",
-      "size": 29214,
+      "sha256": "7408730e189ac07a08b9b716de8fdc332c9f5d062c34a80df3bca6a7e497d577",
+      "size": 31522,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 3
     },
     {
       "path": "project/plugins/core_plugins/memory/__init__.py",
@@ -1285,10 +1285,10 @@
     },
     {
       "path": "project/plugins/core_plugins/memory/tool.py",
-      "sha256": "1dddc0c331fddab22ea81b01cdf22bb2a59e9d0a9108f75f341cfa6b62fef15e",
-      "size": 2947,
+      "sha256": "3b45d11953122affab33870ccb9d9ea0a7300daee4f0bd36da2e0666edc31c4d",
+      "size": 4579,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/pdf_studio/__init__.py",
@@ -1313,10 +1313,10 @@
     },
     {
       "path": "project/plugins/core_plugins/pdf_studio/tool.py",
-      "sha256": "cf9c84aadb63921984bfe9ba0b47e3c82776e6a78e8df7deb9ff8e5c980c04e5",
-      "size": 9829,
+      "sha256": "85c2468a6b801f4546ff323bac0877355686ca3846c38596f3b99898825618be",
+      "size": 11503,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/read_file/__init__.py",
@@ -1341,10 +1341,10 @@
     },
     {
       "path": "project/plugins/core_plugins/read_file/tool.py",
-      "sha256": "cce3a4b706dc9e8c1cca41196f7f3a9c4ca186c08c85864b0e5e33ded7088cbc",
-      "size": 2781,
+      "sha256": "6afeb4deff1f73280dae8cb390d90bef4945155bea66a232e17bab15f3d487b6",
+      "size": 4405,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/reply_assembly/__init__.py",
@@ -1369,10 +1369,10 @@
     },
     {
       "path": "project/plugins/core_plugins/reply_assembly/tool.py",
-      "sha256": "3b0095f86180b21d68c2e7abbed21f0f8a8e3e93b2951a6a499133c79afbf245",
-      "size": 3429,
+      "sha256": "9974ac21cadf48e7bc555b5c872a8ac34f21cfeff1acbd8cddaf17dbeec5e696",
+      "size": 5059,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/search_files/__init__.py",
@@ -1397,10 +1397,10 @@
     },
     {
       "path": "project/plugins/core_plugins/search_files/tool.py",
-      "sha256": "0508e79896ed0d0a4198919f4a20afa8a207a5efbed9b6ad73c86da453199cc1",
-      "size": 5487,
+      "sha256": "f6d41d837564d1039c3d8d6cf148d174de696b4669c44288ee75d39b08819f97",
+      "size": 7051,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/skill_create/__init__.py",
@@ -1425,10 +1425,10 @@
     },
     {
       "path": "project/plugins/core_plugins/skill_create/tool.py",
-      "sha256": "36af8ad9cfdad2fba85c1321982ab554293013cbb1a6370589664250a54b1376",
-      "size": 4579,
+      "sha256": "6b39d8aeab085a734c0c7a9387df4618aa3b8056f0b010dc1a50bfc99f09c43f",
+      "size": 7057,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 3
     },
     {
       "path": "project/plugins/core_plugins/studio_page/__init__.py",
@@ -1453,10 +1453,10 @@
     },
     {
       "path": "project/plugins/core_plugins/studio_page/tool.py",
-      "sha256": "268869edfda76a06e3556ba3d586a895ebb4796f04a37d36ac913fb4bd2cc91b",
-      "size": 14657,
+      "sha256": "d3b0535085f551da26160c7bd442c8d02aea6e9bc7116ce97ab234fa9a057dd1",
+      "size": 16237,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/studio_read/__init__.py",
@@ -1481,10 +1481,10 @@
     },
     {
       "path": "project/plugins/core_plugins/studio_read/tool.py",
-      "sha256": "c50ea0ed0724c50d255b457dd76be913f408d0fbacd9e55e853f3396ba3cf5ac",
-      "size": 1180,
+      "sha256": "91d865da3ed374ed899a8651fff1954290d45c40d1ebeb7f878424a9ddc45cb7",
+      "size": 2772,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/svg_maker/__init__.py",
@@ -1509,10 +1509,10 @@
     },
     {
       "path": "project/plugins/core_plugins/svg_maker/tool.py",
-      "sha256": "0740f4e6a9de80518d8f10d6edd87738741dfbefd6565809de50e32a8ba96d72",
-      "size": 8326,
+      "sha256": "7186e69a98d23812864349655ba27fbbac05236280e585c5008a026224a319b4",
+      "size": 9854,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/text_to_speech/__init__.py",
@@ -1537,10 +1537,10 @@
     },
     {
       "path": "project/plugins/core_plugins/text_to_speech/tool.py",
-      "sha256": "b25a342e895102d933fcbe31781ebb643946f45d914681e1d3bcb91a62f42023",
-      "size": 4109,
+      "sha256": "de81dd1376679b22d9cee9edf66aa18607eb3a6ff88f6f9329afd418b03bca26",
+      "size": 5629,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/video_analyze/__init__.py",
@@ -1565,10 +1565,10 @@
     },
     {
       "path": "project/plugins/core_plugins/video_analyze/tool.py",
-      "sha256": "b2c6ec3f6fd1451ed66c8f363946bbb113b762970fc419bbd3a36b26bf802938",
-      "size": 15851,
+      "sha256": "b441a9131c29fdcb5c5d00e5031a4f19bcafc8a65eef059fba54a1bee5086cb7",
+      "size": 17533,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/video_download/__init__.py",
@@ -1593,10 +1593,10 @@
     },
     {
       "path": "project/plugins/core_plugins/video_download/tool.py",
-      "sha256": "84b4679f494bfe85131b33d137758c6f7b8c90c5c7b8b219e5d6bbf9799d2474",
-      "size": 9159,
+      "sha256": "741edf8740b4a7631daac62916aff53e56f98f2ee7dd1d3959741005408c28f9",
+      "size": 10785,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/video_transcribe/__init__.py",
@@ -1621,10 +1621,10 @@
     },
     {
       "path": "project/plugins/core_plugins/video_transcribe/tool.py",
-      "sha256": "655b4607516d7569ef212ae45ccd34fb8eb0ea990c5b105bd95771535e929344",
-      "size": 13381,
+      "sha256": "18859c0c811efaed59259131ca0f29fdceefd0a61ec2f99b3939772aff2c050f",
+      "size": 14991,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/vision_analyze/__init__.py",
@@ -1649,10 +1649,10 @@
     },
     {
       "path": "project/plugins/core_plugins/vision_analyze/tool.py",
-      "sha256": "302610655715d2bdfa893fdd1abcdd7a9e6024ed319fa3675731d563fb2ad384",
-      "size": 2178,
+      "sha256": "e5ab77398eb6194b0298661c15262c29a57a95176d135bf0f3ab64593143058d",
+      "size": 3846,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/core_plugins/write_file/__init__.py",
@@ -1677,10 +1677,10 @@
     },
     {
       "path": "project/plugins/core_plugins/write_file/tool.py",
-      "sha256": "7a71f1853f6a9c6a834d506e13e4b1accb2b73785cef278602ab88b088d58e73",
-      "size": 2600,
+      "sha256": "924cf51fc7e96c4fe2d3f9bd6311a969af1bc0d5592ec6a12db74cde796826e1",
+      "size": 4182,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/plugins/filesystem/__init__.py",
@@ -1872,9 +1872,16 @@
       "notice_count": 1
     },
     {
+      "path": "project/scripts/agent_inject.py",
+      "sha256": "34dfcff5f013897e7940a577c9c87cc164e4fe685666c3f30b137fc33ec1e497",
+      "size": 8367,
+      "mode": "100644",
+      "notice_count": 1
+    },
+    {
       "path": "project/scripts/agent_notice.py",
-      "sha256": "ba55278f62d8d6b87d20f0cac36144f2a3974ddb9988ed5368ce314746427938",
-      "size": 11170,
+      "sha256": "8d15126adc8c288e4f2d1a4c6ff89cfc8667537bbeba556d8a30895934c07385",
+      "size": 11247,
       "mode": "100644",
       "notice_count": 5
     },
@@ -2321,8 +2328,8 @@
     },
     {
       "path": "updates.json",
-      "sha256": "fcc1fe82b328869132bb7691a78fc685d25f2b9b1add563d6eb9942286a53d73",
-      "size": 58890,
+      "sha256": "d85226dc0b2ff27980a939099030a2a4b18a852caec253976bbedaaa1867a93b",
+      "size": 59189,
       "mode": "100644",
       "notice_count": 0
     }

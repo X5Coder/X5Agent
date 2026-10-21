@@ -48,19 +48,20 @@ def _comments(suffix: str) -> tuple[str, str, str]:
     raise ValueError(f"unsupported comment style: {suffix}")
 
 
-def _block(suffix: str, stars: int, number: int, newline: str) -> str:
+def _block(suffix: str, stars: int, number: int, newline: str,
+           indent: str = "") -> str:
     opener, closer, _ = _comments(suffix)
     star_text = "*" * stars
     if suffix in LINE_COMMENT_SUFFIXES:
         return (
-            f"# {star_text}{newline}"
-            f"# {NOTICE_TEXT}{newline}"
-            f"# {star_text} {number}{newline}"
+            f"{indent}# {star_text}{newline}"
+            f"{indent}# {NOTICE_TEXT}{newline}"
+            f"{indent}# {star_text} {number}{newline}"
         )
     return (
-        f"{opener}{star_text}{newline}"
-        f"{NOTICE_TEXT}{newline}"
-        f"{star_text} {number}{closer}{newline}"
+        f"{indent}{opener}{star_text}{newline}"
+        f"{indent}{NOTICE_TEXT}{newline}"
+        f"{indent}{star_text} {number}{closer}{newline}"
     )
 
 

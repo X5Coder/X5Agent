@@ -18,3 +18,5 @@ jobs:
         run: python project/scripts/agent_build.py --check-only
       - name: Verify protected-code notices
         run: python project/scripts/agent_notice.py --verify
+      - name: Verify generated guard points
+        run: python project/scripts/agent_inject.py --check

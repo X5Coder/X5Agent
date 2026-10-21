@@ -1,6 +1,6 @@
 {
-  "version": "0.86.0",
-  "description": "XAP/1 Phase 3 now enforces protection at runtime through one distributed guard API. The official launch and signed protected tree are checked on every HTTP request, and the agent loop plus every tool dispatch, gateway, scheduler, trigger, and studio entry point checks the launch and local license, so removing one check cannot disable the rest. Notice verification also rejects duplicate star/number pairs across the project, and the signed manifest covers every changed file.",
+  "version": "0.87.0",
+  "description": "XAP/1 Phase 3 is complete: every tool module now carries generated guard points with the exact protected-code notice, in addition to the HTTP server, agent loop, tool dispatcher, gateway, scheduler, trigger, and studio checks, so removing one guard cannot disable the rest. The signed manifest covers all 331 protected files and CI now rejects a missing guard point.",
   "features": [
     "New distributed guard API: one fixed, fail-closed refusal for the official-launch and local-license checks, usable by every runtime entry point without file scans or network calls.",
     "The agent loop now checks the guard at start, before every model call, and before every tool batch; removing one check cannot bypass the others.",
@@ -356,6 +356,8 @@
     "One subscribe button shape and label: Get <name> / Start free",
     "Temporary domain dex.awnlearn.com serving the console over HTTPS",
     "Every HTTP request now checks the official launch and the signed protected tree after parsing (login, health, auth status, repair and the login page stay reachable), so an install with modified protected code is refused with a clear 403/503 answer, while an expired subscription can still reach the plan and license pages to renew.",
-    "The signed protected tree is verified on the server through a one-minute cache, so request handling stays fast while a tampered install is still caught."
+    "The signed protected tree is verified on the server through a one-minute cache, so request handling stays fast while a tampered install is still caught.",
+    "Every tool module now carries a generated XAP/1 guard point at import and at each public entry (82 points across 36 modules), each with the exact protected-code notice, so deleting one check leaves the others.",
+    "New agent_inject.py writes or verifies those guard points idempotently, preserves CRLF, refuses non-Python files, and now runs in the pre-commit hook and the GitHub protection workflow."
   ]
 }

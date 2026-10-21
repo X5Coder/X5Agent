@@ -810,9 +810,11 @@ There is no single `security.py`.
     - Harder to patch than pure Python.
 
 Generator:
-- `scripts/agent_inject.py` adds guards.
+- `scripts/agent_inject.py` adds guards (currently 82 across 36 tool modules).
 - Guard names and locations change per release.
 - 80+ points without 80 manual edits.
+- `--check` fails when a module or public entry lost its point, so CI enforces
+  the layout instead of memory.
 - Deleting one point does not disable the rest.
 
 ---
@@ -1388,10 +1390,10 @@ Status: core + service generator implemented in `0.84.0` (`core/agent_guard/heal
 
 ### Phase 3 — Distribution and notice
 
-Status: notice tool + CI/hook gate implemented in `0.84.0`; the distributed
-guard API (`points.py`) and its runtime wiring through the HTTP server, agent
-loop, tool dispatcher, gateway, scheduler, trigger, and studio are implemented.
-The 80 generated per-function guards are still pending.
+Status: complete in `0.87.0`. The notice tool + CI/hook gate, the distributed
+guard API (`points.py`), its runtime wiring through the HTTP server, agent loop,
+tool dispatcher, gateway, scheduler, trigger, and studio, and the generated
+per-function guards (82 points across 36 tool modules) are implemented.
 
 - [x] `scripts/agent_notice.py` inject/verify (exact text, unique stars/number, shebang/CRLF preserved, JSON refused)
 - [x] pre-commit hook (`.githooks/pre-commit`, opt in with `git config core.hooksPath .githooks`)
@@ -1399,8 +1401,8 @@ The 80 generated per-function guards are still pending.
 - [x] `core/agent_guard/points.py` (O(1) require_tool/loop_guard/action_guard/local_guard; `server_guard` checks the official launch plus the signed tree through a one-minute cache, never the subscription, so renewal stays reachable; fixed fail-closed `GuardRefusal`; no network/user-data access)
 - [x] server middleware
 - [x] dispatcher, engine, gateway, scheduler, trigger, studio
-- [ ] `scripts/agent_inject.py` for 80 guards
-- [ ] exact protected-code notice above every protected function/block
+- [x] `scripts/agent_inject.py` (idempotent `--write`/`--check`; 82 guards across 36 tool modules; unique notice per guard; CRLF preserved)
+- [x] exact protected-code notice above every generated guard block (agent_notice owns the text and decorations)
 
 ### Phase 4 — Subscription, device, and capabilities
 
