@@ -1,13 +1,13 @@
 {
   "schema": "x5-agent-manifest/1",
-  "version": "0.92.0",
-  "commit": "d903e6f6b6ff556630116d03e4c316a4b1ef1491",
-  "build": "d903e6f6b6ff556630116d03e4c316a4b1ef1491",
+  "version": "0.92.1",
+  "commit": "ee2a6e2b01918e7f2464826f0e75e371a283d407",
+  "build": "ee2a6e2b01918e7f2464826f0e75e371a283d407",
   "release_key_id": "release-2026-01",
   "policy_hash": "97147c746b347c763db3013aef271c1ce5e647ec4e694a61e16713410baca030",
   "key_id": "release-2026-01",
-  "generated_at": "2026-10-21T16:46:49Z",
-  "root": "8932d05dc2facbfa91cf3c5318a3fd00755f565b8b1b21b52162cd943337f207",
+  "generated_at": "2026-10-21T17:03:17Z",
+  "root": "f951cd8f467ccfaad95c1566a9d507df73706965e819d4b8eef9f137455f284a",
   "files": [
     {
       "path": "agent_boot.py",
@@ -1047,8 +1047,8 @@
     },
     {
       "path": "project/install.py",
-      "sha256": "d68c006514b3a3faa6bc3bc8601bda8d53c0a3b8eaa51ae1056b264078d0f049",
-      "size": 51252,
+      "sha256": "078493739a6491d3e94724c087700c3f9ab63f3aeb0e0aef1eba1a2277281235",
+      "size": 52450,
       "mode": "100644",
       "notice_count": 1
     },
@@ -2370,8 +2370,8 @@
     },
     {
       "path": "updates.json",
-      "sha256": "8585e8d197ee275ac7bff6ab5de198b414a0f95b0de70aa83031fbd0eca483e1",
-      "size": 65474,
+      "sha256": "24209d2990baf71acb57ea49324c705a51d53be7dde76dbf5c12a9a3c5c9f45a",
+      "size": 66113,
       "mode": "100644",
       "notice_count": 0
     }
