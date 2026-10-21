@@ -88,19 +88,63 @@ plain HTTP on a public IP exposes the password — terminate TLS first.
 
 ---
 
-## 2. From source (private repository)
+## 2. From source (public repository or private mirror)
+
+The one command clones or updates `~/X5Agent`, installs the dependencies and
+starts the console on port 7777:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/X5Coder/X5Agent/main/setup.sh | bash
+```
+
+For a private mirror, set `X5_INSTALL_TOKEN` for the clone (it is removed from
+the remote after use). The manual equivalent is:
 
 ```bash
 sudo apt install -y git python3 python3-venv python3-pip
-git clone https://<your-token>@github.com/X5Coder/X5Agent.git
+git clone https://github.com/X5Coder/X5Agent.git
 cd X5Agent
 python3 project/install.py --run
 ```
 
 `install.py` installs the dependencies, syncs the bundled embedding model,
-checks the browser stack, asks once for the owner e-mail + password and starts
-the console detached on port 7777. It never touches `X5Agent/Data`, so it is
-also the update command (`git pull --ff-only` + re-run).
+checks the browser stack and starts the console detached on port 7777. The
+first browser visit creates the owner account (use `--email/--password` only
+for automation). It never touches `X5Agent/Data`, so it is also the update
+command (`git pull --ff-only` + re-run).
+
+### Ubuntu: `sitecustomize` and the paused page
+
+Ubuntu's `libpython3.X-minimal` ships a Python startup hook at
+`/etc/python3.X/sitecustomize.py` (it installs the Apport crash hook). X5Agent's
+official launcher refuses any loaded `sitecustomize`, so a clean Ubuntu install
+would otherwise open the protected "paused" page even though the code is intact.
+
+`setup.sh` now checks the interpreter it is about to use and, only when
+`/etc/python3.X/sitecustomize.py` is the stock `apport_python_hook`, moves that
+one file to `sitecustomize.py.x5-disabled` before installing or starting. The
+file is kept (never deleted), and `PYTHONNOUSERSITE=1` is exported so a
+user-level `sitecustomize` cannot reintroduce the same false positive.
+
+This changes the host's Python crash reporting for that interpreter, not
+X5Agent code. To keep Apport enabled and accept that X5Agent will show the
+paused page, run:
+
+```bash
+X5_KEEP_SITECUSTOMIZE=1 bash setup.sh
+```
+
+If the paused page appears on an existing install (for example after an
+`apt upgrade` restored the hook), disable it and restart:
+
+```bash
+sudo mv /etc/python3.10/sitecustomize.py /etc/python3.10/sitecustomize.py.x5-disabled
+x5agent --off
+x5agent
+```
+
+Use `python3.12` in the path when that is the interpreter. The same command
+applies before starting a compiled `launch.pyc` install.
 
 ---
 

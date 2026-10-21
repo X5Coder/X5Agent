@@ -15,6 +15,9 @@
 # Re-running updates the source only (git pull --ff-only, data never touched).
 set -euo pipefail
 
+# Keep user site-packages out of the launcher and the installed service.
+export PYTHONNOUSERSITE=1
+
 REPO_SLUG="X5Coder/X5Agent"
 REPO_URL="${X5_REPO_URL:-https://github.com/$REPO_SLUG.git}"
 DIR="${X5_DIR:-$HOME/X5Agent}"
@@ -73,6 +76,46 @@ if [ -z "$PY" ]; then
   exit 1
 fi
 echo "[setup] python: $($PY --version 2>&1)"
+
+# Ubuntu's libpython3.*-minimal ships an apport sitecustomize hook. XAP/1
+# refuses any loaded sitecustomize, so the console would show the paused page
+# even though nothing was tampered with. Disable only the stock apport hook
+# for THIS interpreter and keep it as *.x5-disabled (never delete it).
+# X5_KEEP_SITECUSTOMIZE=1 opts out for administrators who need apport.
+disable_stock_sitecustomize() {
+  if [ "${X5_KEEP_SITECUSTOMIZE:-0}" = "1" ]; then
+    echo "[setup] keeping sitecustomize (X5_KEEP_SITECUSTOMIZE=1)"
+    return 0
+  fi
+
+  local pyver hook backup
+  pyver="$("$PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+  hook="/etc/python${pyver}/sitecustomize.py"
+
+  if [ -f "$hook" ]; then
+    if grep -q 'apport_python_hook' "$hook" 2>/dev/null; then
+      backup="${hook}.x5-disabled"
+      if [ -e "$backup" ]; then
+        backup="${hook}.x5-disabled.$(date +%Y%m%d-%H%M%S)"
+      fi
+      if [ "$(id -u)" -eq 0 ]; then
+        mv "$hook" "$backup" 2>/dev/null || echo "[setup] WARN: could not disable $hook" >&2
+      elif command -v sudo >/dev/null 2>&1; then
+        sudo mv "$hook" "$backup" 2>/dev/null || echo "[setup] WARN: could not disable $hook (sudo)" >&2
+      else
+        echo "[setup] WARN: $hook needs root to disable; run setup.sh with sudo." >&2
+      fi
+      [ -f "$hook" ] || echo "[setup] disabled stock Ubuntu sitecustomize: $hook -> $backup"
+    else
+      echo "[setup] WARN: $hook is not the stock apport hook; leaving it in place." >&2
+    fi
+  fi
+
+  if ! "$PY" -c 'import sys; raise SystemExit(0 if "sitecustomize" not in sys.modules else 1)' >/dev/null 2>&1; then
+    echo "[setup] WARN: a sitecustomize is still loaded; the console may show the paused page." >&2
+  fi
+}
+disable_stock_sitecustomize
 
 # Default to --run (install + start) unless the caller opts out with --no-run.
 ARGS=("$@")
