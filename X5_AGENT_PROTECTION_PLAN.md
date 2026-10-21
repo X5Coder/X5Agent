@@ -1374,15 +1374,16 @@ build/sign scripts, legal files, `.gitattributes`, signature/hash tests).
 
 ### Phase 2 — Silent repair
 
-Status: core implemented in `0.84.0` (`core/agent_guard/heal.py` + `scripts/agent_repair.py`
-+ `agent_boot.py` integration + `tests/test_agent_heal.py`); the Linux/Windows/macOS
-service installers are the remaining part of this phase.
+Status: core + service generator implemented in `0.84.0` (`core/agent_guard/heal.py`
++ `scripts/agent_repair.py` + `scripts/agent_service.py` + `agent_boot.py` integration
++ tests); enabling the generated service is an explicit operator command, never automatic.
 
 - [x] local signed snapshot (`Data/agent/snapshot`, seeded on boot/`--snapshot`)
 - [x] delta comparison (changed/missing/extra against the signed manifest)
 - [x] SilentRepair and queue (snapshot -> pinned GitHub -> license mirror, hash-checked atomic writes, bounded 3 attempts/10s/8MB/64MB)
 - [x] Local Safe Mode (`Data/agent/safe_mode.json`, quiet `Checking installation`)
-- [ ] OS service integration (systemd / Windows scheduled task / launchd installers)
+- [x] OS service generator (`agent_service.py`: systemd user/system, launchd, Windows scheduled task; always starts `agent_boot.py`, `--print/--install/--uninstall/--status`)
+- [ ] automatic service enable on Linux/macOS (the operator runs the printed enable command)
 
 ### Phase 3 — Distribution and notice
 

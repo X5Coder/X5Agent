@@ -1,6 +1,6 @@
 {
   "version": "0.84.0",
-  "description": "XAP/1 Phase 2 adds silent self-heal. Protected files are compared against the signed manifest, and changed or missing files are restored quietly from the local signed snapshot first, then from the pinned GitHub commit, then from the license-server mirror. Every candidate is hash-checked before an atomic replace, unexpected protected files are quarantined instead of deleted, and a failed repair enters Local Safe Mode with a quiet \"Checking installation\" status. User data is never read or changed, and a repair queue holds sensitive actions until the tree is trusted again.",
+  "description": "XAP/1 Phase 2 adds silent self-heal. Protected files are compared against the signed manifest, and changed or missing files are restored quietly from the local signed snapshot first, then from the pinned GitHub commit, then from the license-server mirror. Every candidate is hash-checked before an atomic replace, unexpected protected files are quarantined instead of deleted, and a failed repair enters Local Safe Mode with a quiet \"Checking installation\" status. User data is never read or changed, a repair queue holds sensitive actions until the tree is trusted again, and a safe boot-service generator starts agent_boot.py on Linux, macOS or Windows.",
   "features": [
     "New core/agent_guard/heal.py: SilentRepair compares the signed manifest with the files and restores changed or missing protected files without any error dialog.",
     "Repair order is local signed snapshot -> pinned GitHub commit -> license-server mirror; every candidate is SHA-256 checked before an atomic replace.",
@@ -8,6 +8,7 @@
     "A failed repair enters Local Safe Mode: user data and backups still work, sensitive actions wait in a bounded queue, and the quiet status is \"Checking installation\".",
     "New project/scripts/agent_repair.py: --repair, --snapshot to seed the local signed snapshot, and --status for OS services and scheduled tasks.",
     "agent_boot.py now runs SilentRepair quietly before launch and seeds Data/agent/snapshot once when the protected tree is healthy.",
+    "New project/scripts/agent_service.py: prints or writes the XAP/1 boot service for systemd, launchd or Windows Task Scheduler (always agent_boot.py, never launch.py), with the exact enable/status/remove commands.",
     "New signed XAP/1 trust anchor: project/agent/policy.json is signed by the Ed25519 release key, and project/agent/release_public_key.pem is the only key trusted at runtime.",
     "The release manifest lists every protected source, prompt, frontend and metadata file with its SHA-256, size, mode and protected-notice count; the tree root is signed separately.",
     "New core/agent_guard/trust.py and manifest.py verify signatures, roots, hashes and extra protected files before a release is trusted; a modified, missing or extra file fails closed.",
