@@ -484,17 +484,75 @@ def test_installer_bootstraps_a_project_environment():
     assert install.VENV_DIR.parent == install.PROJECT_ROOT.parent
     source = INSTALL_PY.read_text(encoding="utf-8")
     body = source[source.index("def ensure_environment("):source.index("def _has_nvidia_gpu(")]
-    assert "os.execve" in body and "_VENV_MARKER" in body
-    assert body.count("execve") == 1, "one bounded bootstrap, never a loop"
+    assert "_restart_self(" in body and "_VENV_MARKER" in body
+    assert body.count("_restart_self(") == 1, "one bounded bootstrap, never a loop"
+    assert "os.execve" not in body, "Windows cannot quote execve argv (bpo-19124)"
     cli_source = (PROJECT_ROOT / "scripts" / "cli.py").read_text(encoding="utf-8")
     assert "def _runtime_python(" in cli_source
+
+
+def test_restart_self_keeps_a_spaced_script_path_whole(monkeypatch):
+    """A repo under "Ai Agent Project Latest" must survive the venv switch.
+
+    os.execve joins argv with spaces and never quotes on Windows, so the
+    child used to die with "can't open file ...\\Agent" right after
+    "using the project environment".
+    """
+    import types
+
+    seen: dict = {}
+
+    def fake_run(cmd, env=None):
+        seen["cmd"] = cmd
+        seen["env"] = env
+        return types.SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(install, "os", types.SimpleNamespace(name="nt", environ={}))
+    monkeypatch.setattr(install, "subprocess", types.SimpleNamespace(run=fake_run))
+    script = r"C:\Users\KIMO\Documents\Ai Agent Project Latest\project\install.py"
+    with pytest.raises(SystemExit) as stop:
+        install._restart_self(r".venv\Scripts\python.exe", script, ["--run"])
+    assert stop.value.code == 0, "the child exit code becomes ours"
+    assert seen["cmd"] == [r".venv\Scripts\python.exe", script, "--run"], (
+        "one list argument, so the path is never split")
+
+
+def test_main_switches_to_the_project_environment_before_any_pip(monkeypatch):
+    """Regression: ensure_environment() existed but main() never called it.
+
+    The first update on a stock Windows Python therefore ran pip against
+    C:\\Program Files and died with "WinError 5: Access is denied".
+    """
+    calls: list = []
+    monkeypatch.setattr(install, "enable_ordered_output", lambda: None)
+    monkeypatch.setattr(
+        install, "ensure_environment", lambda: calls.append("env") or False
+    )
+    monkeypatch.setattr(
+        install, "check_project_state",
+        lambda: pytest.fail("must not run before the environment is usable"),
+    )
+    monkeypatch.setattr(
+        install, "update_source",
+        lambda: pytest.fail("must not pull before the environment is usable"),
+    )
+    assert install.main([]) == 1, "a failed switch must stop the install"
+    assert calls == ["env"], "exactly one bounded bootstrap attempt"
+
+    source = INSTALL_PY.read_text(encoding="utf-8")
+    body = source[source.index("def main("):]
+    assert "ensure_environment()" in body, "main must call it, not just define it"
+    assert body.index("ensure_environment()") < body.index("ensure_resources("), (
+        "the environment is settled before the dependency sync runs pip")
 
 
 def test_installer_foreground_starts_through_agent_boot():
     source = INSTALL_PY.read_text(encoding="utf-8")
     body = source[source.index("def main("):]
     assert "from scripts.cli import _agent_boot as _boot_path" in body
-    assert "os.execv(sys.executable, [sys.executable, str(boot)])" in body
+    assert '_restart_self(sys.executable, str(boot), [])' in body, (
+        "one restart owner: Windows cannot quote os.execv argv (bpo-19124)")
+    assert "os.execv(" not in body
     assert '"-m", "web.server.server"' not in body
 
 

@@ -211,6 +211,22 @@ def _create_project_venv() -> Path | None:
     return python
 
 
+def _restart_self(python: str, script: str, args: list, env: dict | None = None):
+    """Continue the install with another interpreter (venv switch, new code).
+
+    Windows cannot use ``os.execve`` for this: it joins argv with spaces and
+    never quotes, so a repo under "Ai Agent Project Latest" was split into
+    separate arguments and the child died with "can't open file ...\\Agent"
+    (bpo-19124). The child runs as a normal process there and its exit code
+    becomes ours; POSIX keeps the real exec so no extra process is left.
+    """
+    if os.name == "nt":
+        proc = subprocess.run([python, script, *args], env=env)
+        raise SystemExit(proc.returncode)
+    os.execve(python, [python, script, *args],
+              env if env is not None else dict(os.environ))
+
+
 def ensure_environment() -> bool:
     """Make sure the running interpreter can actually host the console.
 
@@ -241,9 +257,10 @@ def ensure_environment() -> bool:
     env[_VENV_MARKER] = "1"
     print(f"  using the project environment ({VENV_DIR})")
     try:
-        os.execve(str(python),
-                  [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
-                  env)
+        _restart_self(str(python), str(Path(__file__).resolve()),
+                      list(sys.argv[1:]), env)
+    except SystemExit:
+        raise
     except Exception as exc:
         print(f"  ERROR: cannot restart inside {VENV_DIR.name} "
               f"({str(exc)[:120]})", file=sys.stderr)
@@ -1178,6 +1195,13 @@ def main(argv=None) -> int:
     print("=" * 70)
     # --run means fully automatic: no prompts (browser fix included).
     auto = args.yes or args.run
+    # One interpreter for everything: the dependency sync below runs pip with
+    # THIS interpreter. On a stock Windows/macOS Python that path is not
+    # writable, so pip dies with EACCES (or falls back to --user, which
+    # launch.py hides by design). Switch into the project .venv first, before
+    # any pip work, and re-exec so the rest of the run uses it too.
+    if not ensure_environment():
+        return 1
     if not check_environment():
         return 1
     check_project_state()
@@ -1191,7 +1215,7 @@ def main(argv=None) -> int:
         os.environ["X5_UPDATED"] = "1"
         script = str(Path(__file__).resolve())
         cli_args = list(argv) if argv is not None else sys.argv[1:]
-        os.execv(sys.executable, [sys.executable, script, *cli_args])
+        _restart_self(sys.executable, script, cli_args)
     if not ensure_resources(hf_token=args.hf_token):
         return 1
     if not args.skip_browser:
@@ -1247,7 +1271,7 @@ def main(argv=None) -> int:
             _open_console(web_url, args.no_open_browser)
             os.environ["X5_PORT"] = str(CONSOLE_PORT)
             os.chdir(str(PROJECT_ROOT))
-            os.execv(sys.executable, [sys.executable, str(boot)])
+            _restart_self(sys.executable, str(boot), [])
         try:
             from scripts.cli import launch_detached as _launch, _port_answers as _probe2
         except Exception:
