@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from .bootstrap import seed_defaults
 from .db import SessionLocal, init_db
-from .models import AdminUser, new_id
+from .models import Account, AdminUser, new_id
 from .security import hash_password
 from .validation import EMAIL_RE
 
@@ -42,6 +42,30 @@ def create_admin(email: str, password: str) -> None:
     print(f"admin {action}: {email}")
 
 
+def reset_account_password(email: str, password: str) -> None:
+    """Set a customer account password (operator recovery, never printed).
+
+    The console owner and the license account share one email/password. When an
+    account was created earlier with a different password, the client's sign-in
+    can never attach it (the server refuses a duplicate email), so the operator
+    resets it here instead of deleting paid data.
+    """
+    email = email.strip().lower()
+    if not EMAIL_RE.match(email):
+        raise SystemExit("invalid account email")
+    if len(password) < 8:
+        raise SystemExit("account password must be at least 8 characters")
+
+    init_db()
+    with SessionLocal() as db:
+        account = db.scalars(select(Account).where(Account.email == email)).first()
+        if account is None:
+            raise SystemExit("no account for that email")
+        account.password_hash = hash_password(password)
+        db.commit()
+    print(f"account password reset: {email}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="X5Agent license server CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -52,6 +76,13 @@ def main() -> None:
     create.add_argument("--password")
 
     sub.add_parser("seed", help="create defaults (trial plan, bootstrap admin)")
+
+    reset = sub.add_parser(
+        "reset-password", help="set a customer account password (recovery)"
+    )
+    reset.add_argument("--email", required=True)
+    # Same rule as create-admin: a password on argv leaks into the process list.
+    reset.add_argument("--password")
 
     args = parser.parse_args()
 
@@ -64,6 +95,13 @@ def main() -> None:
         init_db()
         seed_defaults()
         print("defaults seeded")
+    elif args.command == "reset-password":
+        password = args.password or os.environ.get("ACCOUNT_PASSWORD", "")
+        if not password:
+            raise SystemExit(
+                "account password required (--password or ACCOUNT_PASSWORD)"
+            )
+        reset_account_password(args.email, password)
 
 
 if __name__ == "__main__":

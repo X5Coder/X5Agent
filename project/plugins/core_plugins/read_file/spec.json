@@ -1,6 +1,6 @@
 {
   "name": "read_file",
-  "description": "A filesystem inspection tool that reads and returns the full text content of a specified file INSIDE X5Agent/Workspace only (any path outside is BLOCKED). Use whenever you need to examine workspace code, review workspace configs, or inspect workspace logs before taking action. Use this to verify ground-truth file contents and eliminate blind assumptions.",
+  "description": "A filesystem inspection tool that reads and returns the full text content of a specified file inside the working folder (the folder the user selected; any path outside is BLOCKED). Use whenever you need to examine code, review configs, or inspect logs in that folder before taking action. Use this to verify ground-truth file contents and eliminate blind assumptions.",
   "inputs": {
     "path": {
       "type": "string",

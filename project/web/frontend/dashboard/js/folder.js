@@ -1,20 +1,22 @@
 /**
- * workspace.js — Agent Workspace file browser
- * Owns: folder listing (one level), breadcrumb, upload, new folder, download.
- * Event-driven (push): reloads on workspace-version pushes + focus/visibility.
+ * folder.js — working-folder UI (the ONE folder the agent works in)
+ * Owns: the folder page browser (list, breadcrumb, upload, mkdir, download)
+ * and the composer folder picker (pill + dialog). The server resolves every
+ * path inside this folder; the terminal is separate and unrestricted.
+ * Event-driven (push): reloads on folder-version pushes + focus/visibility.
  */
 "use strict";
 
 import { toast, openModal, closeModal, modalShell } from "./ui.js?v=13";
 import { onPush } from "./events.js?v=7";
 
-let wsPath = "";
-let wsVersion = 0;
-let wsBusy = false;
-let wsFile = null; // opened file view { full, name, meta, kind } — null = folder listing
-let wsReadOnly = false; // browser-downloads area: no upload / mkdir
-let wsDeleteBlocked = false; // true only inside the VIRTUAL downloads view (server read_only flag)
-let wsReveal = null; // {dir, name} from chat blue-token click — reveal once, then clear
+let folderPath = "";
+let folderVersion = 0;
+let folderBusy = false;
+let openFile = null; // opened file view { full, name, meta, kind, size } — null = listing
+let revealName = null; // {name} from a chat token click — reveal once, then clear
+let currentRoot = "";
+let currentName = "Working Folder";
 
 function fmtSize(bytes) {
   const n = Number(bytes) || 0;
@@ -58,7 +60,7 @@ function isHtmlName(name) {
 /* Inline preview URL: the download endpoint serves ?preview=1 as inline
    (PDF/HTML/images) so the file renders instead of forcing a download. */
 function previewUrl(full) {
-  return "/api/workspace/download?path=" + encodeURIComponent(full) + "&preview=1";
+  return "/api/folder/download?path=" + encodeURIComponent(full) + "&preview=1";
 }
 
 /* Preview size caps: the endpoint streams any size, but embedding a huge
@@ -99,25 +101,27 @@ function sigFor(path, entries) {
   try {
     // The opened file is part of the view: entering/leaving it must re-render
     // even when the folder entries are unchanged (otherwise Back looks dead).
-    const view = wsFile ? `file:${wsFile.name}` : "list";
-    return path + "|" + view + "|" + entries.map((e) => `${e?.type}:${e?.name}:${e?.size ?? e?.items ?? ""}${e?.external ? ":x" : ""}`).join(",");
+    const view = openFile ? `file:${openFile.name}` : "list";
+    return path + "|" + view + "|" + entries.map((e) => `${e?.type}:${e?.name}:${e?.size ?? e?.items ?? ""}`).join(",");
   } catch (_) {
     return "";
   }
 }
 
-async function loadWorkspace() {
+async function loadFolder() {
   const list = document.getElementById("wsList");
   const bar = document.getElementById("wsPathBar");
   if (!list) return;
-  if (wsBusy) return;
-  wsBusy = true;
+  if (folderBusy) return;
+  folderBusy = true;
   try {
-    const res = await fetch("/api/workspace?path=" + encodeURIComponent(wsPath), { cache: "no-store" });
+    const res = await fetch("/api/folder?path=" + encodeURIComponent(folderPath), { cache: "no-store" });
     if (!res.ok) throw new Error("load failed");
     const data = await res.json();
     const entries = Array.isArray(data?.entries) ? data.entries : [];
-    wsPath = typeof data?.path === "string" ? data.path : wsPath;
+    folderPath = typeof data?.path === "string" ? data.path : folderPath;
+    if (typeof data?.root === "string" && data.root) currentRoot = data.root;
+    if (typeof data?.name === "string" && data.name) currentName = data.name;
     // Newest first — files and folders share one timeline, latest on top.
     try {
       entries.sort((a, b) => {
@@ -128,47 +132,32 @@ async function loadWorkspace() {
       });
     } catch (_) {}
 
-    // Browser downloads: upload / new-folder stay hidden inside downloads
-    // (the folder is sync-managed), but delete is allowed for anything
-    // INSIDE a real Workspace/downloads/ — only the virtual (library) view
-    // is fully read-only, flagged by the server's read_only marker.
-    // The top-level downloads folder itself is never deletable (protected).
-    try {
-      const inDl = wsPath === "downloads" || wsPath.startsWith("downloads/");
-      wsReadOnly = inDl;
-      wsDeleteBlocked = inDl && data?.read_only === true;
-      const up = document.getElementById("wsUploadBtn");
-      const mk = document.getElementById("wsMkdirBtn");
-      if (up) up.style.display = inDl ? "none" : "";
-      if (mk) mk.style.display = inDl ? "none" : "";
-    } catch (_) {}
-
     // Silent background refresh: skip re-render when nothing changed,
     // so polling never flickers in front of the user.
-    const sig = sigFor(wsPath, entries);
-    if (wsPath === lastPath && sig && sig === lastSig) return;
-    lastPath = wsPath;
+    const sig = sigFor(folderPath, entries);
+    if (folderPath === lastPath && sig && sig === lastSig) return;
+    lastPath = folderPath;
     lastSig = sig;
 
     if (bar) {
-      // Full path from the workspace root inside the project.
-      const fullPath = wsPath ? `X5Agent/Workspace/${wsPath}` : "X5Agent/Workspace";
-      const parts = wsPath ? wsPath.split("/") : [];
+      // Root name + relative path segments, with a copy-full-path button.
+      const rootLabel = currentName || "Working Folder";
+      const parts = folderPath ? folderPath.split("/") : [];
       let html = `<span class="ws-path-ico" aria-hidden="true">${folderSvg()}</span>`;
-      html += `<span class="ws-crumbs"><span class="ws-root">X5Agent</span><span class="ws-crumb-sep">/</span><button type="button" data-ws-nav="" class="ws-crumb-btn">Workspace</button>`;
+      html += `<span class="ws-crumbs"><button type="button" data-ws-nav="" class="ws-crumb-btn ws-root">${escName(rootLabel)}</button>`;
       let acc = "";
       parts.forEach((p) => {
         acc = acc ? `${acc}/${p}` : p;
         html += `<span class="ws-crumb-sep">/</span><button type="button" data-ws-nav="${escName(acc)}" class="ws-crumb-btn">${escName(p)}</button>`;
       });
-      if (wsFile) html += `<span class="ws-crumb-sep">/</span><span class="ws-crumb-cur">${escName(wsFile.name)}</span>`;
+      if (openFile) html += `<span class="ws-crumb-sep">/</span><span class="ws-crumb-cur">${escName(openFile.name)}</span>`;
       html += `</span><button type="button" class="ws-copy-btn" id="wsCopyPath" title="Copy full path" aria-label="Copy full path">${copySvg()}</button>`;
       bar.innerHTML = html;
       bar.querySelectorAll("[data-ws-nav]").forEach((b) => {
         b.addEventListener("click", () => {
-          wsPath = b.dataset.wsNav || "";
-          wsFile = null;
-          loadWorkspace();
+          folderPath = b.dataset.wsNav || "";
+          openFile = null;
+          loadFolder();
         });
       });
       // Long paths: keep the deepest segment in view.
@@ -178,6 +167,9 @@ async function loadWorkspace() {
       } catch (_) {}
       bar.querySelector("#wsCopyPath")?.addEventListener("click", async (e) => {
         const btn = e.currentTarget;
+        const fullPath = folderPath && currentRoot
+          ? currentRoot.replace(/[\\/]+$/, "") + (currentRoot.includes("\\") ? "\\" : "/") + folderPath.replace(/\//g, currentRoot.includes("\\") ? "\\" : "/")
+          : (currentRoot || folderPath);
         try {
           if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(fullPath);
@@ -199,12 +191,12 @@ async function loadWorkspace() {
     }
 
     // Opened file view: the file must still exist, otherwise fall back to listing.
-    if (wsFile && !entries.some((e) => e?.type !== "folder" && e?.name === wsFile.name)) wsFile = null;
+    if (openFile && !entries.some((e) => e?.type !== "folder" && e?.name === openFile.name)) openFile = null;
 
     list.innerHTML = "";
-    if (wsFile) {
+    if (openFile) {
       list.classList.toggle("ws-grid", false);
-      renderFileView(list, wsFile);
+      renderFileView(list, openFile);
       return;
     }
     list.classList.toggle("ws-grid", entries.length > 0);
@@ -212,7 +204,7 @@ async function loadWorkspace() {
       const empty = document.createElement("div");
       empty.className = "ws-empty";
       empty.innerHTML = `
-        <div class="ws-empty-word">Workspace is empty</div>
+        <div class="ws-empty-word">This folder is empty</div>
         <button type="button" class="glass-btn" id="wsEmptyUpload">Upload your first file</button>`;
       list.appendChild(empty);
       empty.querySelector("#wsEmptyUpload")?.addEventListener("click", () => {
@@ -230,8 +222,7 @@ async function loadWorkspace() {
       btn.setAttribute("tabindex", "0");
       if (i < 12) btn.setAttribute("data-anim", "");
       const isFolder = e?.type === "folder";
-      const isExt = e?.external === true;
-      const full = joinPath(wsPath, e?.name || "");
+      const full = joinPath(folderPath, e?.name || "");
       const meta = isFolder ? fmtCount(e) : [fmtSize(e?.size), fmtDate(e?.mtime)].filter(Boolean).join(" · ");
       const kind = isFolder ? "folder" : fileKind(e?.name);
       const kindLabel = isFolder ? "Folder" : kind === "file" ? "File" : kind[0].toUpperCase() + kind.slice(1);
@@ -240,19 +231,14 @@ async function loadWorkspace() {
         : isImageName(e?.name)
           ? `<img class="ws-thumb-img" loading="lazy" alt="" src="${previewUrl(full)}" />`
           : `<span class="ws-thumb ${kind}">${thumbSvg(kind)}</span>`;
-      const badge = isExt ? `<span class="ws-ext">browser</span>` : "";
       const go = isFolder ? arrowSvg() : downloadSvg();
-      // The top-level downloads folder is essential: never offer delete for it.
-      // Anything INSIDE a real downloads/ is user-deletable; only the
-      // virtual (library) view blocks delete.
-      const isProtected = wsPath === "" && (e?.name || "") === "downloads";
-      const del = (wsDeleteBlocked || isProtected) ? "" : `<button type="button" class="ws-del" title="Delete ${escName(e?.name || "")}" aria-label="Delete ${escName(e?.name || "")}">${trashSvg()}</button>`;
+      const del = `<button type="button" class="ws-del" title="Delete ${escName(e?.name || "")}" aria-label="Delete ${escName(e?.name || "")}">${trashSvg()}</button>`;
       btn.innerHTML = `
         ${thumb}
         <span class="ws-info">
           <span class="ws-kind">${kindLabel}</span>
           <span class="ws-name"></span>
-          <span class="ws-meta">${escName(meta)}${badge}</span>
+          <span class="ws-meta">${escName(meta)}</span>
         </span>
         <span class="ws-go" aria-hidden="true">${go}</span>
         ${del}`;
@@ -260,13 +246,13 @@ async function loadWorkspace() {
       btn.title = isFolder ? `Open ${e?.name}` : `View ${e?.name}`;
       const openEntry = () => {
         if (isFolder) {
-          wsPath = full;
-          wsFile = null;
-          loadWorkspace();
+          folderPath = full;
+          openFile = null;
+          loadFolder();
         } else {
-          wsFile = { full, name: e?.name || "", meta, kind, size: Number(e?.size) || 0 };
+          openFile = { full, name: e?.name || "", meta, kind, size: Number(e?.size) || 0 };
           lastSig = "";
-          loadWorkspace();
+          loadFolder();
         }
       };
       btn.addEventListener("click", openEntry);
@@ -291,11 +277,11 @@ async function loadWorkspace() {
       }
       list.appendChild(btn);
     });
-    // One-shot reveal from the chat token click: scroll to the card + flash it.
-    if (wsReveal) {
+    // One-shot reveal from a chat token click: scroll to the card + flash it.
+    if (revealName) {
       try {
-        const target = wsReveal;
-        wsReveal = null;
+        const target = revealName;
+        revealName = null;
         const cards = list.querySelectorAll(".ws-card .ws-name");
         for (const n of cards) {
           if (n && n.textContent === target) {
@@ -315,7 +301,7 @@ async function loadWorkspace() {
           }
         }
       } catch (_) {
-        wsReveal = null;
+        revealName = null;
       }
     }
     // Silent swap: folder contents (and folder-enter) replace the boot
@@ -327,14 +313,14 @@ async function loadWorkspace() {
     // A failed first load must still surface the retry box instead of
     // leaving the list empty.
     if (!list.children.length) {
-      list.innerHTML = `<div class="grid-empty" data-ws-error><span>Could not load Workspace.</span><button type="button" class="ws-retry-btn" id="wsRetryBtn">Retry</button></div>`;
+      list.innerHTML = `<div class="grid-empty" data-ws-error><span>Could not load the folder.</span><button type="button" class="ws-retry-btn" id="wsRetryBtn">Retry</button></div>`;
       document.getElementById("wsRetryBtn")?.addEventListener("click", () => {
         lastSig = "";
-        loadWorkspace();
+        loadFolder();
       });
     }
   } finally {
-    wsBusy = false;
+    folderBusy = false;
   }
 }
 
@@ -398,15 +384,15 @@ async function uploadPicked(file) {
   }
   try {
     const data = await readAsDataURL(file);
-    const res = await fetch("/api/workspace", {
+    const res = await fetch("/api/folder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "upload", path: wsPath, name: file.name, data }),
+      body: JSON.stringify({ action: "upload", path: folderPath, name: file.name, data }),
     });
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out?.error || "upload failed");
-    toast("Uploaded to Workspace");
-    loadWorkspace();
+    toast("Uploaded");
+    loadFolder();
   } catch (err) {
     toast(err instanceof Error && err.message ? err.message : "Upload failed");
   }
@@ -422,9 +408,9 @@ function validFolderName(v) {
 
 async function createFolder() {
   openModal(modalShell({
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></svg>`,
+    icon: folderSvg(),
     title: "New folder",
-    subtitle: wsPath ? `Inside Workspace / ${wsPath}` : "Inside Workspace",
+    subtitle: folderPath ? `Inside ${currentName} / ${folderPath}` : `Inside ${currentName}`,
     body: `
       <div class="field">
         <label for="wsFolderName">Folder name</label>
@@ -461,16 +447,16 @@ async function createFolder() {
     }
     save.disabled = true;
     try {
-      const res = await fetch("/api/workspace", {
+      const res = await fetch("/api/folder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "mkdir", path: wsPath, name: String(input.value).trim() }),
+        body: JSON.stringify({ action: "mkdir", path: folderPath, name: String(input.value).trim() }),
       });
       const out = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(out?.error || "create failed");
       closeModal();
       toast("Folder created");
-      loadWorkspace();
+      loadFolder();
     } catch (e) {
       showErr(e instanceof Error && e.message ? e.message : "Create failed");
       save.disabled = false;
@@ -487,7 +473,7 @@ async function createFolder() {
 
 function downloadFile(full, name) {
   const a = document.createElement("a");
-  a.href = "/api/workspace/download?path=" + encodeURIComponent(full);
+  a.href = "/api/folder/download?path=" + encodeURIComponent(full);
   a.download = name;
   document.body.appendChild(a);
   a.click();
@@ -512,12 +498,7 @@ function openPreviewDialog(file) {
     // the console origin so its images/fonts load WITH the owner cookie
     // (opaque-origin frames send no cookies, so every authenticated
     // subresource 401s and previews show no pictures). Scripts stay fully
-    // blocked (no allow-scripts), as do forms, popups and top navigation —
-    // studio pages render without scripts in preview (see pdf_studio_system),
-    // so nothing real loses functionality.
-    // Scrolling stays enabled (no scrolling="no"): the dialog CSS gives the
-    // frame overflow:auto, so wheel on desktop and finger swipes on phones
-    // pan the content; when everything fits no scrollbar appears anyway.
+    // blocked (no allow-scripts), as do forms, popups and top navigation.
     body = size > HTML_PREVIEW_MAX
       ? `<p class="ws-preview-note">This HTML file is too large for preview — download it to view.</p>`
       : `<iframe class="ws-preview-frame ws-preview-dialog-html" src="${url}" title="HTML preview" sandbox="allow-same-origin"></iframe>`;
@@ -565,15 +546,15 @@ function renderFileView(list, file) {
     <span class="ws-file-actions">
       <button type="button" class="glass-btn" id="wsFileBack">Back</button>
       ${canPreview ? `<button type="button" class="glass-btn" id="wsFilePreview">Preview</button>` : ""}
-      ${wsDeleteBlocked ? "" : `<button type="button" class="glass-btn danger" id="wsFileDelete">Delete</button>`}
+      <button type="button" class="glass-btn danger" id="wsFileDelete">Delete</button>
       <button type="button" class="glass-btn" id="wsFileDownload">Download</button>
     </span>`;
   view.querySelector(".ws-file-name").textContent = file.name;
   list.appendChild(view);
   view.querySelector("#wsFileBack")?.addEventListener("click", () => {
-    wsFile = null;
+    openFile = null;
     lastSig = "";
-    loadWorkspace();
+    loadFolder();
   });
   view.querySelector("#wsFilePreview")?.addEventListener("click", () => {
     openPreviewDialog(file);
@@ -603,18 +584,18 @@ function openDeleteModal(full, name, isFolder) {
     const btn = ev.currentTarget;
     btn.disabled = true;
     try {
-      const res = await fetch("/api/workspace", {
+      const res = await fetch("/api/folder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", path: wsPath, name }),
+        body: JSON.stringify({ action: "delete", path: folderPath, name }),
       });
       const out = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(out?.error || "delete failed");
       closeModal();
-      if (wsFile && wsFile.name === name) wsFile = null;
+      if (openFile && openFile.name === name) openFile = null;
       toast(isFolder ? "Folder deleted" : "File deleted");
       lastSig = "";
-      loadWorkspace();
+      loadFolder();
     } catch (e) {
       toast(e instanceof Error && e.message ? e.message : "Delete failed");
       btn.disabled = false;
@@ -622,16 +603,222 @@ function openDeleteModal(full, name, isFolder) {
   });
 }
 
-function workspaceVisible() {
+function folderVisible() {
   try {
-    const page = document.querySelector('.page[data-page="workspace"]');
+    const page = document.querySelector('.page[data-page="folder"]');
     return !!page && page.classList.contains("active");
   } catch (_) {
     return false;
   }
 }
 
-export function initWorkspace() {
+/* ---------- composer folder picker ---------- */
+let pickerPath = "";
+
+function setPillLabels(name, path) {
+  const label = name || "Working Folder";
+  ["folderLabel", "schedRunFolderLabel"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = label;
+  });
+  ["folderBtn", "schedRunFolderBtn"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.title = path ? `Working folder — ${path}` : label;
+  });
+}
+
+async function refreshFolderPill() {
+  try {
+    const res = await fetch("/api/folder", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && typeof data.name === "string") setPillLabels(data.name, data.root);
+  } catch (_) {}
+}
+
+function pickerRow(name, sub, dir) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "folder-row";
+  const icon = document.createElement("span");
+  icon.className = "folder-row-ico";
+  icon.innerHTML = folderSvg();
+  const txt = document.createElement("span");
+  txt.className = "folder-row-txt";
+  const b = document.createElement("b");
+  b.textContent = name;
+  txt.appendChild(b);
+  if (sub) {
+    const i = document.createElement("i");
+    i.textContent = sub;
+    txt.appendChild(i);
+  }
+  const chev = document.createElement("span");
+  chev.className = "folder-row-chev";
+  chev.innerHTML = arrowSvg();
+  row.appendChild(icon);
+  row.appendChild(txt);
+  row.appendChild(chev);
+  row.addEventListener("click", () => {
+    pickerPath = dir;
+    renderPicker();
+  });
+  return row;
+}
+
+async function renderPicker() {
+  const list = document.getElementById("folderPickList");
+  const pathEl = document.getElementById("folderPickPath");
+  const current = document.getElementById("folderPickCurrent");
+  if (!list) return;
+  list.innerHTML = `<div class="folder-pick-loading">Loading…</div>`;
+  try {
+    const res = await fetch("/api/folder/browse?path=" + encodeURIComponent(pickerPath), { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "Could not open that folder");
+    pickerPath = typeof data.path === "string" ? data.path : pickerPath;
+    if (pathEl) pathEl.value = pickerPath;
+    if (current) current.textContent = pickerPath || "";
+    list.innerHTML = "";
+    if (data.parent) {
+      list.appendChild(pickerRow("..", "Parent folder", data.parent));
+    }
+    (data.entries || []).forEach((entry) => {
+      list.appendChild(pickerRow(entry.name, "", entry.path));
+    });
+    if (!data.parent && !(data.entries || []).length) {
+      list.innerHTML = `<div class="folder-pick-empty">No sub-folders here. Use "Choose this folder" to work in it.</div>`;
+    }
+    const roots = document.getElementById("folderPickRoots");
+    if (roots && !roots.dataset.built && Array.isArray(data.roots)) {
+      roots.dataset.built = "1";
+      roots.innerHTML = "";
+      data.roots.forEach((root) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "folder-chip";
+        b.textContent = root.name;
+        b.title = root.path;
+        b.addEventListener("click", () => {
+          pickerPath = root.path;
+          renderPicker();
+        });
+        roots.appendChild(b);
+      });
+    }
+  } catch (e) {
+    list.innerHTML = `<div class="folder-pick-empty">${escName(e instanceof Error ? e.message : "Could not open that folder")}</div>`;
+  }
+}
+
+async function chooseCurrentFolder() {
+  const btn = document.getElementById("folderPickUse");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/folder/set", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: pickerPath }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out?.error || "Could not use that folder");
+    closeModal();
+    folderPath = "";
+    openFile = null;
+    lastSig = "";
+    setPillLabels(out.name, out.path);
+    toast("Working folder set");
+    window.dispatchEvent(new CustomEvent("x5:folder-changed", { detail: out }));
+    if (folderVisible()) loadFolder();
+  } catch (e) {
+    const note = document.getElementById("folderPickErr");
+    if (note) {
+      note.textContent = e instanceof Error && e.message ? e.message : "Could not use that folder";
+      note.style.display = "";
+    }
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function resetToDefault() {
+  try {
+    const res = await fetch("/api/folder/set", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reset" }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out?.error || "Could not reset");
+    closeModal();
+    folderPath = "";
+    openFile = null;
+    lastSig = "";
+    setPillLabels(out.name, out.path);
+    toast("Using the default folder");
+    window.dispatchEvent(new CustomEvent("x5:folder-changed", { detail: out }));
+    if (folderVisible()) loadFolder();
+  } catch (e) {
+    toast(e instanceof Error && e.message ? e.message : "Could not reset");
+  }
+}
+
+export async function openFolderPicker() {
+  if (!pickerPath) pickerPath = "";
+  openModal(modalShell({
+    icon: folderSvg(),
+    title: "Working folder",
+    subtitle: "Where the agent reads, writes and runs files",
+    body: `
+      <div class="folder-pick">
+        <div class="folder-pick-bar">
+          <span class="folder-pick-label">Folder</span>
+          <input class="input" id="folderPickPath" spellcheck="false" autocomplete="off" placeholder="Type a folder path" />
+          <button class="glass-btn" id="folderPickGo" type="button">Go</button>
+        </div>
+        <div class="folder-pick-roots" id="folderPickRoots"></div>
+        <div class="folder-pick-list" id="folderPickList"></div>
+        <p class="folder-pick-current" id="folderPickCurrent"></p>
+        <p class="hint" id="folderPickErr" style="color: var(--red-hi); display: none;"></p>
+      </div>`,
+    foot: `
+      <button class="glass-btn" id="folderPickReset" type="button">Use default</button>
+      <button class="glass-btn" data-close type="button">Cancel</button>
+      <button class="glass-btn" id="folderPickUse" type="button">Choose this folder</button>`,
+  }));
+  await renderPicker();
+  const pathInput = document.getElementById("folderPickPath");
+  const go = async () => {
+    pickerPath = String(pathInput?.value || "").trim();
+    const err = document.getElementById("folderPickErr");
+    if (err) err.style.display = "none";
+    await renderPicker();
+  };
+  document.getElementById("folderPickGo")?.addEventListener("click", go);
+  pathInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      go();
+    }
+  });
+  document.getElementById("folderPickUse")?.addEventListener("click", chooseCurrentFolder);
+  document.getElementById("folderPickReset")?.addEventListener("click", resetToDefault);
+}
+
+function initFolderPickers() {
+  ["folderBtn", "schedRunFolderBtn"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("click", (e) => {
+      e.preventDefault();
+      openFolderPicker();
+    });
+  });
+  refreshFolderPill();
+  window.addEventListener("x5:folder-changed", (e) => {
+    const d = (e && e.detail) || {};
+    setPillLabels(d.name, d.path);
+  });
+}
+
+export function initWorkingFolder() {
   document.getElementById("wsUploadBtn")?.addEventListener("click", () => {
     document.getElementById("wsFileInput")?.click();
   });
@@ -642,42 +829,42 @@ export function initWorkspace() {
     if (f) uploadPicked(f);
   });
   window.addEventListener("x5:page-open", (e) => {
-    if (e && e.detail === "workspace") loadWorkspace();
+    if (e && e.detail === "folder") loadFolder();
   });
   // Chat blue-token click: show that file exactly at its path, then flash it.
-  window.addEventListener("x5:reveal-workspace", (e) => {
+  window.addEventListener("x5:reveal-folder", (e) => {
     try {
       const d = (e && e.detail) || {};
       const dir = typeof d.dir === "string" ? d.dir.replace(/\\/g, "/").slice(0, 500) : "";
       const name = typeof d.name === "string" ? d.name.slice(0, 200) : "";
       if (dir.split("/").includes("..")) return;
-      wsPath = dir;
-      wsFile = null;
-      wsReveal = name || null;
+      folderPath = dir;
+      openFile = null;
+      revealName = name || null;
       lastSig = "";
-      loadWorkspace();
+      loadFolder();
     } catch (_) {}
   });
-  // Push replaces the old 3s poll: reload only when the server reports a
-  // new workspace version (agent-side writes included via its sweep).
-  // Focus/visibility reloads stay (event-driven, not polling).
-  onPush("workspace", (v) => {
+  // Push replaces polling: reload only when the server reports a new
+  // folder version (agent-side writes included via its sweep).
+  onPush("folder", (v) => {
     try {
       const next = v && typeof v.version === "number" ? v.version : 0;
-      if (next && next !== wsVersion && workspaceVisible() && !document.hidden) {
-        wsVersion = next;
-        loadWorkspace();
+      if (next && next !== folderVersion && folderVisible() && !document.hidden) {
+        folderVersion = next;
+        loadFolder();
       } else if (next) {
-        wsVersion = Math.max(wsVersion, next);
+        folderVersion = Math.max(folderVersion, next);
       }
     } catch (_) {}
   });
   window.addEventListener("focus", () => {
-    if (workspaceVisible()) loadWorkspace();
+    if (folderVisible()) loadFolder();
   });
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && workspaceVisible()) loadWorkspace();
+    if (!document.hidden && folderVisible()) loadFolder();
   });
+  initFolderPickers();
   // Returned for the app.js boot barrier (black splash waits on it).
-  return loadWorkspace();
+  return loadFolder();
 }

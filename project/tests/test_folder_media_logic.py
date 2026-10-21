@@ -1,8 +1,9 @@
-"""Workspace file ids + upload mirror + @ injection + vision/studio resolution.
+"""Working-folder file ids + upload mirror + @ injection + vision/studio resolution.
 
-Deterministic: every file id is the Workspace-relative path, shown in the
+Deterministic: every file id is the working-folder-relative path, shown in the
 context map, carried by @ mentions, resolvable by vision_analyze and by the
-studio asset store. Run: pytest project/tests/test_workspace_media_logic.py
+studio asset store. Every test runs against a throwaway folder, never the
+user's real one. Run: pytest project/tests/test_folder_media_logic.py
 """
 import base64
 import shutil
@@ -10,12 +11,27 @@ import sys
 import uuid as _uuid
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.paths import workspace_root  # noqa: E402
+from core.workfolder import get_path as folder_path  # noqa: E402
 from web.server.server import DashboardHandler  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolated_folder(tmp_path, monkeypatch):
+    """Point the working folder at a temp dir so no real user file is touched."""
+    import core.workfolder as wf
+    folder = tmp_path / "default_folder"
+    folder.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(wf, "_state_path", lambda: tmp_path / "working_folder.json", raising=False)
+    monkeypatch.setattr(wf, "default_path", lambda: folder, raising=False)
+    monkeypatch.setattr(wf, "ensure_default", lambda: (folder.mkdir(parents=True, exist_ok=True), folder)[1], raising=False)
+    monkeypatch.setattr(wf, "_STATE_CACHE", {"path": None, "mtime": None})
+    return folder
 
 _PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
@@ -30,14 +46,14 @@ def _handler():
     return object.__new__(DashboardHandler)
 
 
-def test_workspace_api_entries_carry_stable_ids():
+def test_folder_api_entries_carry_stable_ids():
     h = _handler()
     tag = _unique_tag()
-    target = workspace_root() / tag
+    target = folder_path() / tag
     target.mkdir(parents=True, exist_ok=True)
     try:
         (target / "pic.png").write_bytes(_PNG)
-        out = DashboardHandler._workspace_entries(h, target)
+        out = DashboardHandler._folder_entries(h, target)
         by_name = {e["name"]: e for e in out["entries"]}
         assert by_name["pic.png"]["type"] == "file"
         assert by_name["pic.png"]["id"] == f"{tag}/pic.png"
@@ -57,8 +73,8 @@ def test_upload_mirror_keeps_original_name():
         saved.append(Path(str(saved_path)))
         assert f'file_id="{name}"' in ref, ref
         assert iid == name, ref
-        mirrors.append(workspace_root() / name)
-        assert (workspace_root() / name).is_file()
+        mirrors.append(folder_path() / name)
+        assert (folder_path() / name).is_file()
         # Same name again -> same content, suffixed stable id (never overwrite).
         kind2, saved2, ref2, iid2 = DashboardHandler._save_chat_attachment(
             h, {"type": "image", "name": name, "data": data_url})
@@ -68,8 +84,8 @@ def test_upload_mirror_keeps_original_name():
         fid2 = _re2.search(r'file_id="([^"]+)"', ref2).group(1)
         assert fid2.startswith(name.split(".")[0] + "_") and fid2.endswith(".png"), ref2
         assert iid2 == fid2, ref2
-        mirrors.append(workspace_root() / fid2)
-        assert (workspace_root() / fid2).is_file()
+        mirrors.append(folder_path() / fid2)
+        assert (folder_path() / fid2).is_file()
     finally:
         for p in saved:
             try:
@@ -86,7 +102,7 @@ def test_upload_mirror_keeps_original_name():
 def test_at_mention_injects_real_file_id():
     h = _handler()
     tag = _unique_tag()
-    target = workspace_root() / tag
+    target = folder_path() / tag
     target.mkdir(parents=True, exist_ok=True)
     try:
         (target / "notes.txt").write_text("hello", encoding="utf-8")
@@ -96,12 +112,12 @@ def test_at_mention_injects_real_file_id():
                 "workspace_refs": [{"name": "notes.txt", "path": rel}]})
         # @ picks send the file id + full path, in place, never metadata.
         assert ("@" + rel + ' "') in loop_input, loop_input
-        assert "[Workspace file:" not in loop_input, loop_input
+        assert "[Working folder files mentioned]" not in loop_input, loop_input
     finally:
         shutil.rmtree(str(target), ignore_errors=True)
 
 
-def test_upload_sent_as_workspace_id_plus_message_metadata():
+def test_upload_sent_as_folder_id_plus_message_metadata():
     h = _handler()
     data_url = "data:image/png;base64," + base64.b64encode(_PNG).decode("ascii")
     name = f"{_unique_tag()}_shot.png"
@@ -115,8 +131,8 @@ def test_upload_sent_as_workspace_id_plus_message_metadata():
         m = _re.search(r'file_id="([^"]+)"', loop_input)
         assert m, loop_input
         fid = m.group(1)
-        assert (workspace_root() / fid).is_file()
-        # Message metadata carries size + type + the Workspace file id.
+        assert (folder_path() / fid).is_file()
+        # Message metadata carries size + type + the working folder file id.
         assert "file_id=" in loop_input
         assert "what is in this?" in loop_input
         # Priority block points at the same Workspace id.
@@ -129,16 +145,16 @@ def test_upload_sent_as_workspace_id_plus_message_metadata():
                 pass
         if fid:
             try:
-                (workspace_root() / fid).unlink(missing_ok=True)
+                (folder_path() / fid).unlink(missing_ok=True)
             except Exception:
                 pass
 
 
-def test_vision_resolves_workspace_ids():
+def test_vision_resolves_folder_ids():
     from core.ai_models.media import resolve_image
 
     tag = _unique_tag()
-    target = workspace_root() / tag
+    target = folder_path() / tag
     target.mkdir(parents=True, exist_ok=True)
     try:
         (target / "img.png").write_bytes(_PNG)
@@ -172,14 +188,14 @@ def test_studio_assets_dirs_exist_per_studio():
         shutil.rmtree(str(_store.studios_root() / created["studio_id"]), ignore_errors=True)
 
 
-def test_workspace_map_uses_full_metadata_shape():
-    from core.agent.context.builder import _workspace_block
+def test_folder_map_uses_full_metadata_shape():
+    from core.agent.context.builder import _folder_map_block
 
     tag = _unique_tag()
-    target = workspace_root() / f"{tag}.txt"
+    target = folder_path() / f"{tag}.txt"
     try:
         target.write_text("x", encoding="utf-8")
-        block = _workspace_block()
+        block = _folder_map_block()
         assert "id + path + type + size" in block
         assert ("id: " + '"' + tag + '.txt"') in block
         assert "path: " in block and "type: txt" in block and "size: 1 bytes" in block
@@ -195,26 +211,29 @@ def test_workspace_map_uses_full_metadata_shape():
 def test_at_mention_injects_id_plus_path_in_place():
     h = _handler()
     tag = _unique_tag()
-    target = workspace_root() / tag
+    target = folder_path() / tag
     target.mkdir(parents=True, exist_ok=True)
     try:
         (target / "pic.png").write_bytes(_PNG)
         rel = f"{tag}/pic.png"
         loop_input, _ = DashboardHandler._build_loop_input(
             h, {"message": "use @pic here please",
-                "workspace_refs": [{"name": "pic", "path": rel}]})
+                "folder_refs": [{"name": "pic", "path": rel}]})
         # The token becomes @<file-id> + full path exactly where it stood.
         assert "use @" + rel + ' "' in loop_input, loop_input
-        assert "[Workspace file:" not in loop_input, loop_input
+        assert "[Working folder files mentioned]" not in loop_input, loop_input
         import re as _re
         m = _re.search(r"@" + _re.escape(rel) + r' "([^"]+)"', loop_input)
         assert m and Path(m.group(1)).is_file(), loop_input
-        # An unused pick appends as an @<file-id> + path line, still no metadata.
+        # An unused pick appends as an @<file-id> + path line, still no
+        # metadata. Sent with the legacy `workspace_refs` key on purpose: a
+        # cached old bundle must keep working.
         loop_input2, _ = DashboardHandler._build_loop_input(
             h, {"message": "hello",
                 "workspace_refs": [{"name": "pic", "path": rel}]})
         assert ("@" + rel + ' "') in loop_input2, loop_input2
-        assert "[Workspace file:" not in loop_input2, loop_input2
+        assert "[Working folder files mentioned]" in loop_input2, loop_input2
+        assert "type: " not in loop_input2 and "size: " not in loop_input2, loop_input2
     finally:
         shutil.rmtree(str(target), ignore_errors=True)
 
@@ -244,21 +263,20 @@ def test_upload_lines_use_full_metadata_shape():
                 pass
         if fid:
             try:
-                (workspace_root() / fid).unlink(missing_ok=True)
+                (folder_path() / fid).unlink(missing_ok=True)
             except Exception:
                 pass
 
 
 def test_folder_listing_entries_carry_path():
-    from core.tools.workspace.tool import execute
-
+    h = _handler()
     tag = _unique_tag()
-    target = workspace_root() / tag
+    target = folder_path() / tag
     target.mkdir(parents=True, exist_ok=True)
     try:
         (target / "doc.txt").write_text("y", encoding="utf-8")
-        out = execute("list", path=tag)
-        assert out.get("success")
+        out = DashboardHandler._folder_entries(h, target)
+        assert out["truncated"] is False
         by_name = {e["name"]: e for e in out["entries"]}
         assert by_name["doc.txt"]["id"] == f"{tag}/doc.txt"
         assert by_name["doc.txt"]["path"].replace("\\\\", "/").endswith(f"{tag}/doc.txt")
@@ -281,11 +299,11 @@ def test_studio_id_validation_rejects_escape():
 
 def test_at_arabic_name_injects_verbatim_id_resolving_to_real_file():
     import re as _re
-    from core.paths import resolve_inside_workspace
+    from core.workfolder import resolve as resolve_in_folder
 
     h = _handler()
     tag = _unique_tag()
-    target = workspace_root() / tag
+    target = folder_path() / tag
     target.mkdir(parents=True, exist_ok=True)
     try:
         (target / "صورة تجربة.png").write_bytes(_PNG)
@@ -295,16 +313,14 @@ def test_at_arabic_name_injects_verbatim_id_resolving_to_real_file():
                 "workspace_refs": [{"name": "صورة تجربة", "path": rel}]})
         # Verbatim id + full path, no mojibake, no metadata block.
         assert ("@" + rel + ' "') in loop_input, loop_input
-        assert "[Workspace file:" not in loop_input, loop_input
+        assert "[Working folder files mentioned]" not in loop_input, loop_input
         m = _re.search(r"@" + _re.escape(rel) + r' "([^"]+)"', loop_input)
         assert m and Path(m.group(1)).is_file(), loop_input
-        # The id resolves through the Workspace jail to the real file.
-        resolved = resolve_inside_workspace(rel)
+        # The id resolves through the working folder jail to the real file.
+        resolved = resolve_in_folder(rel)
         assert resolved.is_file() and resolved.read_bytes() == _PNG
         # Entering the folder shows the same file with id + full path.
-        from core.tools.workspace.tool import execute
-        out = execute("list", path=tag)
-        assert out.get("success")
+        out = DashboardHandler._folder_entries(h, target)
         entry = {e["name"]: e for e in out["entries"]}["صورة تجربة.png"]
         assert entry["id"] == rel
         assert "\\" not in entry["path"] and Path(entry["path"]).is_file()
@@ -314,19 +330,18 @@ def test_at_arabic_name_injects_verbatim_id_resolving_to_real_file():
 
 def test_emitted_paths_are_directly_usable_in_html():
     import re as _re
-    from core.paths import resolve_inside_workspace
-    from core.tools.workspace.tool import execute
+    from core.workfolder import resolve as resolve_in_folder
 
     tag = _unique_tag()
-    sub = workspace_root() / tag
+    sub = folder_path() / tag
     sub.mkdir(parents=True, exist_ok=True)
     try:
         (sub / "art.png").write_bytes(_PNG)
         rel = f"{tag}/art.png"
         # Outer map shows the folder; entering it shows the file id+path.
-        from core.agent.context.builder import _workspace_block
-        assert (f"folder: {tag}/") in _workspace_block()
-        entry = {e["name"]: e for e in execute("list", path=tag)["entries"]}["art.png"]
+        from core.agent.context.builder import _folder_map_block
+        assert (f"folder: {tag}/") in _folder_map_block()
+        entry = {e["name"]: e for e in DashboardHandler._folder_entries(_handler(), sub)["entries"]}["art.png"]
         assert entry["id"] == rel
         full = entry["path"]
         # Full path: absolute, no backslashes, points at the real bytes.
@@ -337,7 +352,7 @@ def test_emitted_paths_are_directly_usable_in_html():
         for src in _re.findall(r"<img[^>]*src=\"([^\"]+)\"", html):
             cand = Path(src)
             if not cand.is_absolute():
-                cand = resolve_inside_workspace(src)
+                cand = resolve_in_folder(src)
             assert cand.is_file(), src
     finally:
         shutil.rmtree(str(sub), ignore_errors=True)
@@ -352,24 +367,24 @@ def test_studio_system_prompt_is_english_and_mandates_approve():
 
 
 def test_gateway_mirror_keeps_original_name():
-    from gateway.dispatch import _mirror_workspace
+    from gateway.dispatch import _mirror_folder
 
     name = f"{_unique_tag()}_gw.png"
     try:
-        first = _mirror_workspace(_PNG, name)
+        first = _mirror_folder(_PNG, name)
         assert first == name
-        assert (workspace_root() / name).is_file()
-        second = _mirror_workspace(_PNG, name)
+        assert (folder_path() / name).is_file()
+        second = _mirror_folder(_PNG, name)
         assert second != name and second.startswith(name.split(".")[0] + "_")
-        assert (workspace_root() / second).is_file()
+        assert (folder_path() / second).is_file()
     finally:
         for fid in (name,):
             try:
-                (workspace_root() / fid).unlink(missing_ok=True)
+                (folder_path() / fid).unlink(missing_ok=True)
             except Exception:
                 pass
         try:
-            for p in workspace_root().glob(name.split(".")[0] + "_*.png"):
+            for p in folder_path().glob(name.split(".")[0] + "_*.png"):
                 p.unlink(missing_ok=True)
         except Exception:
             pass
@@ -387,10 +402,10 @@ def test_gateway_image_hint_full_shape():
         assert "path: " in hint and "type: png" in hint
         assert ("size: %d bytes" % len(_PNG)) in hint
         assert "analyze it first" in hint
-        assert (workspace_root() / name).is_file()
+        assert (folder_path() / name).is_file()
     finally:
         try:
-            (workspace_root() / name).unlink(missing_ok=True)
+            (folder_path() / name).unlink(missing_ok=True)
         except Exception:
             pass
 
@@ -407,10 +422,10 @@ def test_gateway_document_hint_full_shape():
         assert "path: " in hint and "type: pdf" in hint
         assert ("size: %d bytes" % len(blob)) in hint
         assert "document_search" in hint
-        assert (workspace_root() / name).is_file()
+        assert (folder_path() / name).is_file()
     finally:
         try:
-            (workspace_root() / name).unlink(missing_ok=True)
+            (folder_path() / name).unlink(missing_ok=True)
         except Exception:
             pass
 
@@ -426,10 +441,10 @@ def test_gateway_video_hint_points_at_video_flow():
         assert hint.startswith("- video:") and ('file_id="' + name + '"') in hint
         assert "path: " in hint and "type: mp4" in hint
         assert "process it first" in hint
-        assert (workspace_root() / name).is_file()
+        assert (folder_path() / name).is_file()
     finally:
         try:
-            (workspace_root() / name).unlink(missing_ok=True)
+            (folder_path() / name).unlink(missing_ok=True)
         except Exception:
             pass
 
@@ -438,7 +453,7 @@ def test_documents_block_uses_full_metadata_shape():
     from core.agent.context.builder import _documents_block
 
     tag = _unique_tag()
-    target = workspace_root() / f"{tag}_note.txt"
+    target = folder_path() / f"{tag}_note.txt"
     try:
         target.write_text("doc body", encoding="utf-8")
         block = _documents_block()
@@ -468,11 +483,11 @@ def test_memories_block_sends_user_then_facts(monkeypatch):
 
 def test_all_emitted_paths_are_full_html_usable_links():
     import re as _re
-    from core.agent.context.builder import _workspace_block
+    from core.agent.context.builder import _folder_map_block
 
     h = _handler()
     tag = _unique_tag()
-    sub = workspace_root() / tag
+    sub = folder_path() / tag
     sub.mkdir(parents=True, exist_ok=True)
     saved, fid = [], None
     try:
@@ -487,7 +502,7 @@ def test_all_emitted_paths_are_full_html_usable_links():
         saved += [Path(str(p)) for p in saved_paths]
         m = _re.search(r'file_id="([^"]+)"', loop_input)
         fid = m.group(1) if m else None
-        corps = _workspace_block() + "\n" + loop_input
+        corps = _folder_map_block() + "\n" + loop_input
         paths = _re.findall(r'path: "([^"]+)"', corps)
         assert len(paths) >= 3, corps
         for p in paths:
@@ -501,7 +516,7 @@ def test_all_emitted_paths_are_full_html_usable_links():
                 pass
         if fid:
             try:
-                (workspace_root() / fid).unlink(missing_ok=True)
+                (folder_path() / fid).unlink(missing_ok=True)
             except Exception:
                 pass
         shutil.rmtree(str(sub), ignore_errors=True)

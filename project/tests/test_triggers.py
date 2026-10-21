@@ -14,7 +14,8 @@ if str(project_root) not in sys.path:
 
 from core.tools.trigger.tool import _validate_filesystem_config
 from core.trigger import engine as eng
-from core.paths import ensure_x5agent, workspace_root
+from core.paths import ensure_x5agent
+from core.workfolder import get_path as folder_path
 
 APPROVED = [
     ("filesystem_new_file", {"watch_path": "inbox/docs", "pattern": "*.pdf"}),
@@ -48,9 +49,9 @@ for bad in [
         pass
 print("forbidden guards OK")
 
-# 3. Resolver prefers Workspace and blocks outbox/done
+# 3. Resolver stays inside the working folder and blocks outbox/done
 ensure_x5agent()
-ws = workspace_root().resolve()
+ws = folder_path().resolve()
 resolved = eng._resolve_watch_dir("inbox/docs")
 assert str(resolved).startswith(str(ws)), resolved
 try:

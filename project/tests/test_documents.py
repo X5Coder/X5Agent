@@ -19,12 +19,12 @@ from core.documents.store import (
     search,
 )
 from core.documents import store as _store
-from core.paths import workspace_root
+from core.workfolder import get_path as folder_path
 from core.tools.registry import list_core_specs
 from core.agent.loop.dispatcher import execute_tool
 
 TAG = "doc_test_tmp"
-TAG_DIR = workspace_root() / TAG
+TAG_DIR = (folder_path() / TAG)
 
 # Deterministic fake embeddings (no model download in tests).
 import math as _math
@@ -120,10 +120,9 @@ try:
         pass
     print("index + search OK")
 
-    # 6. deleting the Workspace file deletes its embeddings
-    from core.tools.workspace.tool import execute as ws_exec
-    out = ws_exec("delete_file", path=TAG, name="sample.txt")
-    assert out.get("success") and out.get("embeddings_removed") is True, out
+    # 6. deleting a file purges its embeddings (the same call the folder API makes)
+    (TAG_DIR / "sample.txt").unlink()
+    assert delete_file_embeddings(f"{TAG}/sample.txt") is True
     assert not (TAG_DIR / "sample.txt").exists()
     try:
         search(f"{TAG}/sample.txt", "budget")

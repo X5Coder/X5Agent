@@ -6,9 +6,9 @@ Two paths, same saver:
 - explicit: studio_page action=fetch {url, query} — the model saves a found
   file deliberately; the search words travel as the asset's remembered
   description (meta query) so the deck knows what the file is.
-- workspace: studio_page action=fetch {file, query} — copy a Workspace
-  file (e.g. an image_search result from Workspace/images/) into the
-  studio assets; same meta, no re-download, magic-checked again.
+- folder: studio_page action=fetch {file, query} — copy a working-folder
+  file (e.g. an image_search result from images/) into the studio
+  assets; same meta, no re-download, magic-checked again.
 - automatic: deliver/patch scans the code for leftover hotlinked http(s)
   image/font URLs and saves them the same way (query unknown then).
 
@@ -161,52 +161,52 @@ def save_external(sid: str, url: str, query: str = "") -> dict:
             "bytes": len(blob), "file": target.name}
 
 
-_WORKSPACE_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "gif"}
+_FOLDER_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "gif"}
 
 
-def save_workspace_file(sid: str, rel_path: str, query: str = "") -> dict:
-    """Copy a Workspace file (e.g. an image_search result) into studio assets.
+def save_folder_file(sid: str, rel_path: str, query: str = "") -> dict:
+    """Copy a working-folder file (e.g. an image_search result) into assets.
 
-    The path is resolved strictly inside Workspace (traversal-proof); the
-    bytes are magic-checked again and the search words are remembered as
+    The path is resolved strictly inside the working folder (traversal-proof);
+    the bytes are magic-checked again and the search words are remembered as
     the asset's description, exactly like a web save. Raster images only
     (png/jpg/webp/gif — the only image types the studio shell serves).
     Returns {rel, src, bytes, file}. Raises on any problem.
     """
     _bootstrap()
     from core.studio import store as _store
-    from core.paths import resolve_inside_workspace
+    from core.workfolder import resolve as _resolve_folder
     clean_sid = _store.validate_studio_id(sid)
     if not isinstance(rel_path, str) or not rel_path.strip() or len(rel_path) > 500:
-        raise ValueError("file must be a Workspace-relative path (e.g. images/cat_1.jpg)")
-    src = resolve_inside_workspace(rel_path.strip().replace("\\", "/"))
+        raise ValueError("file must be a path inside the working folder (e.g. images/cat_1.jpg)")
+    src = _resolve_folder(rel_path.strip().replace("\\", "/"))
     if not src.is_file():
-        raise FileNotFoundError(f"Workspace file not found: {rel_path[:120]}")
+        raise FileNotFoundError(f"File not found in the working folder: {rel_path[:120]}")
     try:
         size = src.stat().st_size
     except Exception:
-        raise ValueError(f"Cannot read Workspace file: {rel_path[:120]}")
+        raise ValueError(f"Cannot read file: {rel_path[:120]}")
     if size < 1 or size > MAX_FILE_BYTES:
         raise ValueError(f"File must be 1..{MAX_FILE_BYTES // (1024 * 1024)}MB")
     ext = src.suffix.lower().lstrip(".")
-    if ext not in _WORKSPACE_IMAGE_EXTS:
+    if ext not in _FOLDER_IMAGE_EXTS:
         raise ValueError("Only raster images (png/jpg/webp/gif) can be studio assets")
     try:
         blob = src.read_bytes()
     except Exception:
-        raise ValueError(f"Cannot read Workspace file: {rel_path[:120]}")
+        raise ValueError(f"Cannot read file: {rel_path[:120]}")
     if not _magic_ok(blob, "jpeg" if ext == "jpg" else ext):
         raise ValueError("File content does not match its image type")
     stem = _safe_re().sub("_", src.stem.strip())[:40].strip("._") or "webfile"
     return _commit_asset(clean_sid, "images", stem, ext, blob, query,
-                         f"workspace:{rel_path.strip()[:400]}")
+                         f"folder:{rel_path.strip()[:400]}")
 
 
 def _commit_asset(sid: str, folder: str, stem: str, ext: str,
                  blob: bytes, query: str, source_url: str) -> dict:
     """Write verified bytes into the studio assets + remember them in meta.
 
-    Single owner of asset writes (web saves, Workspace copies and direct
+    Single owner of asset writes (web saves, folder copies and direct
     byte saves all land here). Collision-safe names, bounded meta.
     Returns {rel, src, bytes, file}. Raises on any problem.
     """

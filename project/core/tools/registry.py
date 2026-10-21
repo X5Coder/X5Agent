@@ -9,8 +9,8 @@ import json
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-CORE_TOOLS = ["tool_search", "question", "vector_chat_search", "todo_list", "scheduler", "skills_search", "skills_view", "skill_create", "terminal", "trigger_search", "wait", "open_browser", "navigate", "page_snapshot", "click", "fill", "human_control"]
-DISCOVERABLE_PLUGINS = ["read_file", "write_file", "search_files", "vision_analyze", "workspace", "document_search"]
+CORE_TOOLS = ["tool_search", "question", "vector_chat_search", "todo_list", "scheduler", "skills_search", "skills_view", "skill_create", "terminal", "trigger_search", "wait", "mcp_servers", "open_browser", "navigate", "page_snapshot", "click", "fill", "human_control"]
+DISCOVERABLE_PLUGINS = ["read_file", "write_file", "search_files", "vision_analyze", "document_search"]
 
 # Core plugins: always on, hidden from the UI, no switches.
 # Lives in plugins/core_plugins/ + every X5Browser tool (both behind tool_search).
@@ -146,9 +146,9 @@ def list_discoverable_specs() -> list[dict]:
                         specs.append(json.loads(spec.read_text(encoding="utf-8")))
                     except Exception:
                         continue
-    # workspace + document_search live in core/tools on disk but are classified
-    # discoverable (behind tool_search); folders stay for import compat.
-    for _disc_name in ("workspace", "document_search"):
+    # document_search lives in core/tools on disk but is classified
+    # discoverable (behind tool_search); the folder stays for import compat.
+    for _disc_name in ("document_search",):
         try:
             _spec_path = _PROJECT_ROOT / "core" / "tools" / _disc_name / "spec.json"
             if _spec_path.exists():

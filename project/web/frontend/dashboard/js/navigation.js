@@ -11,7 +11,7 @@ import { animateIn, hideChartTip } from "./ui.js?v=13";
 const BP_MOBILE = 1024;
 const COLLAPSE_KEY = "x5_sidebar";
 
-const PAGES = ["dashboard", "agent", "workspace", "gateway", "skills", "ai-models", "subscription", "settings"];
+const PAGES = ["dashboard", "agent", "folder", "gateway", "skills", "ai-models", "mcp", "subscription", "settings"];
 
 function routeFromPath() {
   try {
@@ -29,10 +29,11 @@ function urlFor(name) {
 const TITLES = {
   dashboard: { title: "Dashboard", sub: "Overview of your agent activity" },
   agent: { title: "Agent", sub: "Chat with your AI assistant" },
-  workspace: { title: "Workspace", sub: "Your agent's files and folders" },
+  folder: { title: "Working Folder", sub: "Your agent's files and folders" },
   gateway: { title: "WhatsApp gateway", sub: "Connect and manage your WhatsApp agent" },
   skills: { title: "Skills", sub: "Reusable instructions for your agent" },
   "ai-models": { title: "AI Models", sub: "Connect any AI model" },
+  mcp: { title: "MCP Servers", sub: "Connect remote tools over OAuth" },
   subscription: { title: "Subscription", sub: "Your plan, payment and renewal" },
   settings: { title: "Settings", sub: "Preferences and account" },
 };

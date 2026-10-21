@@ -10,8 +10,15 @@ from core.agent_guard import import_guard, launch_guard
 
 @pytest.fixture(autouse=True)
 def _clean_guard():
-    yield
-    import_guard.uninstall_import_guard()
+    # sanitize_sys_path mutates sys.path in place (by design at startup), so a
+    # test that runs it would otherwise strip this interpreter's user
+    # site-packages for every later test in the process.
+    saved_path = list(sys.path)
+    try:
+        yield
+    finally:
+        sys.path[:] = saved_path
+        import_guard.uninstall_import_guard()
 
 
 def test_sanitize_sys_path_removes_user_roots(monkeypatch, tmp_path):

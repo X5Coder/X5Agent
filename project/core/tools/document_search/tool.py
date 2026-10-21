@@ -2,11 +2,11 @@
 document_search - semantic chunk search inside one uploaded document.
 
 CORE tool (always in context, next to vector_chat_search): takes a
-Workspace file_id + a query sentence + top_k (min 1) and returns the
+working-folder file_id + a query sentence + top_k (min 1) and returns the
 most similar 300-word markdown chunks with scores. The file_id MUST be
 a MarkItDown-supported type or the call is rejected before any work.
 Indexing (convert -> chunk -> embed) happens automatically on first use
-and re-runs only when the file hash changed. Deleted Workspace files
+and re-runs only when the file hash changed. Deleted files
 lose their embeddings and raise FileNotFoundError.
 """
 from __future__ import annotations

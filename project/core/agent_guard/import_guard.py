@@ -3,7 +3,7 @@
 # ***************************** 481002
 """Import boundary for XAP/1.
 
-No Python module may be imported from user data, the Workspace, skills,
+No Python module may be imported from user data, the working folder, skills,
 model weights, or the bundled embedding folder. Those locations are data,
 not code. The finder asks ``PathFinder`` for the real spec first and rejects
 only specs whose origin is forbidden, so normal project imports are unaffected.

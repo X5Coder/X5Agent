@@ -7,7 +7,7 @@
 import { initModal, hideBootSplash, animateIn } from "./ui.js?v=13";
 import { initNavigation } from "./navigation.js?v=15";
 import { startEvents, whenFirstSync, hasBootCache } from "./events.js?v=7";
-import { initWorkspace } from "./workspace.js?v=23";
+import { initWorkingFolder } from "./folder.js?v=1";
 import { initDashboard } from "./dashboard.js?v=17";
 import { initCharts } from "./charts.js?v=23";
 import { initChat } from "./chat.js?v=108";
@@ -15,6 +15,7 @@ import { initSchedule } from "./schedule.js?v=27";
 import { initSkills } from "./skills.js?v=10";
 import { initGateway } from "./gateway.js?v=31";
 import { initAiModels } from "./ai_models.js?v=6";
+import { initMcp } from "./mcp.js?v=1";
 import { initSettings } from "./settings.js?v=19";
 import { initSubscription, initLicenseGate } from "./subscription.js?v=10";
 import { initStudioPdf } from "./studio_pdf.js?v=12";
@@ -131,7 +132,8 @@ async function init() {
       initChat(),
       initSkills(),
       initAiModels(),
-      initWorkspace(),
+      initMcp(),
+      initWorkingFolder(),
       initSchedule(),
       initGateway(),
       initSettings(),
@@ -166,7 +168,8 @@ async function init() {
         initChat(),
         initSkills(),
         initAiModels(),
-        initWorkspace(),
+        initMcp(),
+        initWorkingFolder(),
         initSchedule(),
         initGateway(),
         initSettings(),

@@ -457,12 +457,37 @@ def test_x5agent_starts_through_the_official_launcher():
     source = (PROJECT_ROOT / "scripts" / "cli.py").read_text(encoding="utf-8")
     body = source[source.index("def launch_detached("):]
     assert "boot = _agent_boot()" in body
-    assert "cmd = [sys.executable, str(boot)]" in body
+    # The interpreter is the project .venv when one exists (install.py
+    # bootstraps it for a Python that cannot hold the deps), the launcher
+    # itself never changes.
+    assert "cmd = [_runtime_python(), str(boot)]" in body
     assert '"web.server.server"' not in body
     assert 'env["X5_PORT"]' in body
     main_body = source[source.index("def main("):]
-    assert "os.execv(sys.executable, [sys.executable, str(boot)])" in main_body
+    assert "os.execv(runtime, [runtime, str(boot)])" in main_body
     assert "web.server.server" not in body or "pkill" in main_body
+
+
+def test_dependency_probe_matches_the_launcher_runtime():
+    """The health probe must see what launch.py sees (no user site-packages).
+
+    A --user install is invisible to the console because launch.py strips the
+    per-user site on purpose; a probe that still sees it reports a green
+    install while the console dies with "No module named 'jwt'".
+    """
+    assert install._pip_env().get("PYTHONNOUSERSITE") == "1"
+
+
+def test_installer_bootstraps_a_project_environment():
+    """A non-writable site-packages must switch to the project .venv."""
+    assert install.VENV_DIR.name == ".venv"
+    assert install.VENV_DIR.parent == install.PROJECT_ROOT.parent
+    source = INSTALL_PY.read_text(encoding="utf-8")
+    body = source[source.index("def ensure_environment("):source.index("def _has_nvidia_gpu(")]
+    assert "os.execve" in body and "_VENV_MARKER" in body
+    assert body.count("execve") == 1, "one bounded bootstrap, never a loop"
+    cli_source = (PROJECT_ROOT / "scripts" / "cli.py").read_text(encoding="utf-8")
+    assert "def _runtime_python(" in cli_source
 
 
 def test_installer_foreground_starts_through_agent_boot():

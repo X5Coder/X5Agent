@@ -9,7 +9,7 @@ Routes (wired minimally in web/server/server.py):
   POST /api/studio/add_page {studio_id} -> auto-creates the next page file
   POST /api/studio/chat {studio_id, message, attachments?} -> runs ONE studio
        turn in the studio branch session (full main context L1-L8 + history +
-       slide states + studio files twice + workspace) and returns {reply}.
+       slide states + studio files twice + working folder) and returns {reply}.
   GET  /studio-pdf/<id>                 -> serves the React shell (built once).
 """
 from __future__ import annotations
@@ -377,7 +377,7 @@ def build_studio_context(studio_id: str, page_no: int, message: str,
     """Minimal per-turn studio context: sentence + state only.
 
     No page codes ever travel here (the model reads via studio_page), no
-    Workspace map, no duplicate listings — just the task, the slide states,
+    working-folder map, no duplicate listings — just the task, the slide states,
     the assets, and a short recent history.
     """
     import sys as _sys

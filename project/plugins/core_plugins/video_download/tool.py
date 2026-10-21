@@ -1,5 +1,5 @@
 """
-video_download - fetch a public video URL via yt-dlp and save mp4 JAILED inside X5Agent/Workspace only.
+video_download - fetch a public video URL via yt-dlp and save mp4 inside the working folder only.
 Returns the saved workspace-relative path + source metadata so video_analyze/video_transcribe can run next.
 Single video only (playlists blocked), http(s) URLs only, bounded retries/timeouts/sizes.
 """
@@ -30,27 +30,28 @@ _FORMATS = {
 }
 
 
-def _workspace_root() -> Path:
+def _folder_root() -> Path:
+    """The agent's current working folder (single owner: core.workfolder)."""
     try:
         import sys as _sys
         proj = Path(__file__).resolve().parents[3]
         if str(proj) not in _sys.path:
             _sys.path.insert(0, str(proj))
-        from core.paths import workspace_root as _ws
-        ws = _ws()
+        from core.workfolder import get_path
+        folder = get_path()
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws.resolve()
+        return folder.resolve()
     except Exception:
         repo = Path(__file__).resolve().parents[4]
-        ws = repo / "X5Agent" / "Workspace"
+        folder = repo / "X5Agent" / "Data" / "default_folder"
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws.resolve()
+        return folder.resolve()
 
 
 def _validate_url(url: str) -> str:
@@ -137,7 +138,7 @@ def execute(url: str, filename: str | None = None, quality: str | None = None, c
     except ImportError as e:
         raise RuntimeError("yt-dlp is not installed. Run: pip install -U yt-dlp") from e
 
-    ws = _workspace_root()
+    ws = _folder_root()
     # Reserve target name: custom name wins, else title-based after info fetch.
     # Download to a temp name first to avoid partial-file confusion, then keep final.
     fmt = _FORMATS[q]
@@ -198,7 +199,7 @@ def execute(url: str, filename: str | None = None, quality: str | None = None, c
     try:
         saved_path.relative_to(ws)
     except ValueError:
-        raise RuntimeError("Download escaped Workspace, blocked") from None
+        raise RuntimeError("Download escaped the working folder, blocked") from None
     if not saved_path.exists():
         # ext may differ (mkv/webm merged); search by id stem
         video_id = str((info or {}).get("id", "")) if isinstance(info, dict) else ""
@@ -212,7 +213,7 @@ def execute(url: str, filename: str | None = None, quality: str | None = None, c
         try:
             dest.relative_to(ws)
         except ValueError:
-            raise ValueError("Blocked: filename escapes Workspace") from None
+            raise ValueError("Blocked: filename escapes the working folder") from None
         try:
             if dest != saved_path:
                 if dest.exists():
@@ -257,7 +258,7 @@ def execute(url: str, filename: str | None = None, quality: str | None = None, c
         "video_path": rel,  # alias: pass directly to video_analyze/video_transcribe
         "size": size,
         "metadata": metadata,
-        "hint": f"Saved to Workspace as {rel}. Call video_analyze with video_path={rel} to inspect frames via vision.",
+        "hint": f"Saved to the working folder as {rel}. Call video_analyze with video_path={rel} to inspect frames via vision.",
     }
     if size > 50 * 1024 * 1024:
         result["warning"] = "File exceeds 50MB: video_analyze may reject it. Re-download with quality=480p if needed."

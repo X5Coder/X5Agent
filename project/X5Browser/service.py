@@ -77,27 +77,28 @@ def _lifecycle_lock() -> Any:
     return _state_lock
 
 
-def _workspace_dir() -> Path:
+def _folder_dir() -> Path:
+    """The user's working folder (upload/export home). Never raises."""
     try:
         import sys as _sys
         proj = Path(__file__).resolve().parents[1]
         if str(proj) not in _sys.path:
             _sys.path.insert(0, str(proj))
-        from core.paths import workspace_root as _ws
-        ws = _ws()
+        from core.workfolder import get_path
+        folder = get_path()
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws
+        return folder
     except Exception:
         repo = Path(__file__).resolve().parents[2]
-        ws = repo / "X5Agent" / "Workspace"
+        folder = repo / "X5Agent" / "Data" / "default_folder"
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws
+        return folder
 
 
 def _shots_dir() -> Path:
@@ -492,7 +493,7 @@ def _ensure_wsl_download_bridge(stack: Any) -> None:
     Linux Chrome resolves the library's Windows download path relative to
     its working directory, creating a dead backslash-named dir at WSL root
     where finished files rot unseen (verified live: an mp3 sat there while
-    Workspace/downloads stayed empty). A symlink with that exact name
+    the working folder's downloads stayed empty). A symlink with that exact name
     pointing at the library folder (via /mnt/<drive>) routes every future
     download straight into the watched folder; strays found inside are
     moved there first. wsl.exe expands `$` and halves `\\` in argv, so this
@@ -923,7 +924,7 @@ async def _get_browser_async(allow_boot: bool = True) -> Any:
                 # Never a visible window: a spawn here only happens when the
                 # endpoint dies under us, and it must stay invisible (the
                 # revert below then reports stopped). Attaches ignore this.
-                adopt_kwargs: dict = {"workspace_dir": str(_workspace_dir()),
+                adopt_kwargs: dict = {"workspace_dir": str(_folder_dir()),
                                       "headless": True}
                 if adopt_stack is not None:
                     adopt_kwargs["debug_port"] = int(adopt_stack.cdp_port)
@@ -989,7 +990,7 @@ async def _get_browser_async(allow_boot: bool = True) -> Any:
             # local spawn — stack or fallback — stays headless. The old
             # stack-only conditional left headed spawns that popped a real
             # window in front of the user with a black preview behind it.
-            replace_kwargs: dict = {"workspace_dir": str(_workspace_dir()),
+            replace_kwargs: dict = {"workspace_dir": str(_folder_dir()),
                                     "headless": True}
             if stack is not None:
                 replace_kwargs["debug_port"] = int(stack.cdp_port)

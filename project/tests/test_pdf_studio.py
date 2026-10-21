@@ -1004,10 +1004,10 @@ def test_fetch_accepts_workspace_file_from_image_search():
     import shutil
     from plugins.core_plugins.studio_page import tool as _page
     from core.studio import store as _store
-    from core.paths import resolve_inside_workspace
+    from core.workfolder import resolve as resolve_in_folder
     created = _store.create_studio(title="UT Bridge", pages=1)
     sid = created["studio_id"]
-    staged = resolve_inside_workspace("images/ut_bridge_cat.png")
+    staged = resolve_in_folder("images/ut_bridge_cat.png")
     try:
         _store.mark_designing(sid, 1)
         staged.parent.mkdir(parents=True, exist_ok=True)

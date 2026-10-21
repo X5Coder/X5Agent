@@ -375,3 +375,172 @@ def test_plans_page_bounces_once_the_plan_is_chosen(monkeypatch):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_login_page_never_traps_a_signed_in_console(monkeypatch):
+    """The sign-in page stays reachable when a signed-in console lost its
+    license session, and ?next survives the no-back-to-login bounce.
+
+    Dropping ?next (and bouncing an authed visitor away from login.html)
+    turned a signed-in but license-less console into an endless reload of
+    /plans.html -> /login.html -> / -> /plans.html.
+    """
+    monkeypatch.setattr(ca, "is_setup", lambda *a, **k: True)
+    monkeypatch.setattr(ca, "session_valid", lambda token: token == "ok")
+
+    httpd, port = _boot(monkeypatch)
+    try:
+        # No next: the usual one-way login bounce.
+        head, _body = _request(port, "GET", "/login.html", cookie="x5sess=ok")
+        assert b"302" in head.split(b"\r\n")[0], head[:200]
+        assert b"Location: /\r\n" in head, head[:400]
+
+        # A page that sent the user here gets itself back.
+        head, _body = _request(port, "GET", "/login.html?next=%2Fplans.html",
+                               cookie="x5sess=ok")
+        assert b"302" in head.split(b"\r\n")[0], head[:200]
+        assert b"Location: /plans.html" in head, head[:400]
+
+        # Off-site next is refused (same-origin paths only).
+        head, _body = _request(port, "GET", "/login.html?next=%2F%2Fevil.test%2Fx",
+                               cookie="x5sess=ok")
+        assert b"302" in head.split(b"\r\n")[0], head[:200]
+        assert b"evil.test" not in head, head[:400]
+
+        # Explicit re-authentication loads the page instead of bouncing away.
+        head, _body = _request(
+            port, "GET", "/login.html?relogin=1&next=%2Fplans.html",
+            cookie="x5sess=ok")
+        assert b"200" in head.split(b"\r\n")[0], head[:300]
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+# ------------------------------------- license session after a console sign-in
+
+
+def _license_errors():
+    from core.licensing import LicenseError
+    from core.licensing.client import LicenseServerError
+
+    return LicenseError, LicenseServerError
+
+
+def _invalid_credentials(LicenseError, LicenseServerError):
+    """A LicenseError carrying the server's own 401 invalid_credentials code."""
+    error = LicenseError("The email or password is incorrect.")
+    error.__cause__ = LicenseServerError(
+        "invalid_credentials", status=401, code="invalid_credentials")
+    return error
+
+
+def test_license_attach_creates_a_missing_account(monkeypatch):
+    """A verified console owner never lands on a signed-out plan page.
+
+    The central account may be missing (an install that predates it, or a
+    signup that never completed). The console password was just verified, so
+    the same credentials create it and the plans open.
+    """
+    from core.licensing import license_service
+    from web.server import server as S
+
+    LicenseError, LicenseServerError = _license_errors()
+    state = {"connected": False}
+    calls: list[str] = []
+    monkeypatch.setattr(license_service, "status", lambda: dict(state))
+
+    def _login(email, password):
+        calls.append("login")
+        if state["connected"] is False and calls.count("login") == 1:
+            raise _invalid_credentials(LicenseError, LicenseServerError)
+        state["connected"] = True
+        return {"connected": True}
+
+    def _register(email, password):
+        calls.append("register")
+        state["connected"] = True
+        return {"connected": True}
+
+    monkeypatch.setattr(license_service, "login", _login)
+    monkeypatch.setattr(license_service, "register", _register)
+
+    out = S._sign_in_license_if_needed("owner@gmail.com", "SecretPass1")
+    assert out == {"connected": True, "message": ""}
+    assert calls == ["login", "register"], "signup already signs in: no extra call"
+
+
+def test_license_attach_explains_a_different_existing_password(monkeypatch):
+    """Same email, another license password: refused clearly, never duplicated."""
+    from core.licensing import license_service
+    from web.server import server as S
+
+    LicenseError, LicenseServerError = _license_errors()
+    calls: list[str] = []
+
+    def _login(email, password):
+        raise _invalid_credentials(LicenseError, LicenseServerError)
+
+    monkeypatch.setattr(license_service, "status", lambda: {"connected": False})
+    monkeypatch.setattr(license_service, "login", _login)
+
+    def _register(email, password):
+        calls.append("register")
+        raise LicenseError("An account already exists for this email. Sign in instead.") \
+            from LicenseServerError("email_taken", status=409, code="email_taken")
+
+    monkeypatch.setattr(license_service, "register", _register)
+
+    out = S._sign_in_license_if_needed("owner@gmail.com", "SecretPass1")
+    assert out["connected"] is False
+    assert "different password" in out["message"]
+    assert calls == ["register"], "one attempt, never a duplicate account"
+
+
+def test_license_attach_never_registers_on_a_network_error(monkeypatch):
+    """An unreachable server says nothing about the credentials."""
+    from core.licensing import license_service
+    from web.server import server as S
+
+    LicenseError, LicenseServerError = _license_errors()
+    calls: list[str] = []
+    monkeypatch.setattr(license_service, "status", lambda: {"connected": False})
+
+    def _login(email, password):
+        raise LicenseError("Could not reach the license server.") \
+            from LicenseServerError("offline", code="network", retryable=True)
+
+    monkeypatch.setattr(license_service, "login", _login)
+    monkeypatch.setattr(license_service, "register",
+                        lambda e, p: calls.append("register"))
+
+    out = S._sign_in_license_if_needed("owner@gmail.com", "SecretPass1")
+    assert out["connected"] is False
+    assert "reach" in out["message"]
+    assert calls == [], "a network answer must never create an account"
+
+
+def test_license_attach_reports_an_inactive_account(monkeypatch):
+    """A suspended/disabled account is never "repaired" by creating one."""
+    from core.licensing import license_service
+    from web.server import server as S
+
+    LicenseError, LicenseServerError = _license_errors()
+    calls: list[str] = []
+    monkeypatch.setattr(license_service, "status", lambda: {"connected": False})
+
+    def _login(email, password):
+        raise LicenseError("This license account is suspended.") \
+            from LicenseServerError("account_disabled", status=403,
+                                    code="account_disabled")
+
+    monkeypatch.setattr(license_service, "login", _login)
+    monkeypatch.setattr(license_service, "register",
+                        lambda e, p: calls.append("register"))
+
+    out = S._sign_in_license_if_needed("owner@gmail.com", "SecretPass1")
+    assert out["connected"] is False
+    assert "suspended" in out["message"]
+    assert calls == []
+
+

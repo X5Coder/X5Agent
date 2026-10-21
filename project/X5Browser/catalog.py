@@ -375,7 +375,7 @@ SPECS: list[dict] = [
         ),
         "inputs": {
             "ref": {"type": "integer", "required": True, "description": "The input[type=file] ref."},
-            "paths": {"type": "list", "required": True, "description": "Workspace file paths, max 10."},
+            "paths": {"type": "list", "required": True, "description": "Working-folder file paths, max 10."},
         },
     },
     {
@@ -418,7 +418,7 @@ SPECS: list[dict] = [
             "text": {"type": "string", "required": False, "description": "Prompt text for prompt dialogs."},
             "name": {"type": "string", "required": False, "description": "Permission name."},
             "origin": {"type": "string", "required": False, "description": "Permission origin."},
-            "paths": {"type": "list", "required": False, "description": "Workspace paths for file_chooser."},
+            "paths": {"type": "list", "required": False, "description": "Working-folder paths for file_chooser."},
         },
     },
     {
@@ -494,7 +494,7 @@ SPECS: list[dict] = [
         ),
         "inputs": {
             "format": {"type": "string", "required": True, "description": "pdf, mhtml or html."},
-            "path": {"type": "string", "required": True, "description": "Workspace path to save to."},
+            "path": {"type": "string", "required": True, "description": "Working-folder path to save to."},
         },
     },
     {

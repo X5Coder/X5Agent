@@ -42,8 +42,8 @@ def _studio_tool_specs() -> list[tuple[str, str, dict]]:
     """Local studio tool specs (trusted spec.json files). Never raises.
 
     image_search is pre-seeded with its studio face (studio_spec(): the
-    studio_id home, zero Workspace words) so the studio context never
-    mentions Workspace files — the studio stays self-contained.
+    studio_id home, zero folder words) so the studio context never
+    mentions working-folder files — the studio stays self-contained.
     """
     out: list[tuple[str, str, dict]] = []
     try:
@@ -147,11 +147,11 @@ def _ask_user(name: str, args: Any, on_question) -> dict:
 
 
 def _approve_terminal(name: str, args: Any, on_question) -> dict:
-    """No-question passthrough: BOTH scopes run terminal commands immediately.
+    """No-question passthrough: terminal commands always run immediately.
 
-    Scope (not approval) controls reach: limited_access = Workspace jail,
-    full_access = whole machine. The scope file is set from the Agent
-    permission menu; the loop never asks per command.
+    The terminal is full access by design (any command, any folder). The
+    model asks the user itself, with the question tool, before anything
+    destructive is deleted.
     """
     return execute_tool(name, args)
 
@@ -410,7 +410,7 @@ def _should_show_arrow(name: str, result: dict | None = None) -> bool:
 
 
 def _basename(path: Any) -> str:
-    """Filename only from a Workspace path (never leaks full paths). Never raises."""
+    """Filename only from a working-folder path (never leaks full paths)."""
     try:
         s = str(path or "").strip().replace("\\", "/")
         if not s:
@@ -455,7 +455,6 @@ def _summarize_output(result: dict, name: str | None = None, args: Any = None) -
       unrecoverable after overwrite, so only after is shown)
     - read_file: file name(s) read (args-based, never content)
     - search_files: query + match count + up to 3 names (never content)
-    - workspace: action + path/count only (never full listing)
     - terminal: full command + exit code + output tail (bounded, never full log)
     - document_search: file name + query (never chunk text)
     - vector_chat_search: query only (never message text)
@@ -529,21 +528,6 @@ def _summarize_output(result: dict, name: str | None = None, args: Any = None) -
                 return head[:120]
             tail = preview[:240].strip()
             return (head + "\n" + tail)[:400]
-
-        if tool == "workspace":
-            action = str(safe_args.get("action") or "").strip()[:20]
-            target = _basename(safe_args.get("path") or safe_args.get("name") or "")
-            count = out.get("count") if isinstance(out.get("count"), int) else None
-            items = out.get("items") if isinstance(out.get("items"), list) else out.get("files") if isinstance(out.get("files"), list) else None
-            if isinstance(count, int):
-                detail = f"{action or 'list'}: {count} items" if action else f"{count} items"
-            elif isinstance(items, list):
-                detail = f"{action or 'list'}: {len(items)} items"
-            elif target:
-                detail = f"{action} {target}".strip() if action else target
-            else:
-                detail = action or None
-            return detail[:160] if detail else None
 
         if tool == "terminal":
             cmd = str(safe_args.get("command") or out.get("command") or "").strip()[:1000]
@@ -792,7 +776,7 @@ def _collect_final_images(tool_calls_log: list) -> list[dict]:
                         break
                 continue
             if entry.get("tool") == "image_search":
-                # Workspace pictures (main agent only — studio turns never
+                # Working-folder pictures (main agent only — studio turns never
                 # persist final images, and studio outputs carry no `file`).
                 for meta in (out.get("images") or [])[:6]:
                     if not isinstance(meta, dict):
@@ -803,7 +787,7 @@ def _collect_final_images(tool_calls_log: list) -> list[dict]:
                             and rel.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif"))
                             and f"ws:{rel}" not in seen):
                         seen.add(f"ws:{rel}")
-                        images.append({"workspace": rel})
+                        images.append({"folder": rel})
                         if len(images) >= 6:
                             break
                 continue
@@ -951,18 +935,18 @@ def _collect_final_audio(tool_calls_log: list) -> list[dict]:
 
 
 def _collect_final_files(tool_calls_log: list) -> list[dict]:
-    """Workspace files produced via tools (e.g. studio pages), for the file card.
+    """Working-folder files produced via tools (e.g. studio pages), for the card.
 
-    Scans for successful results carrying a Workspace-relative `file` path
+    Scans for successful results carrying a working-folder-relative `file` path
     (plus slide images for pdf decks, so the preview can offer them too).
     Bounded (4 files, 20 images each), deduped by path. Never raises.
     """
     files: list[dict] = []
     seen: set[str] = set()
     try:
-        from core.paths import resolve_inside_workspace
+        from core.workfolder import resolve as _resolve_folder_checked
     except Exception:
-        resolve_inside_workspace = None  # type: ignore[assignment]
+        _resolve_folder_checked = None  # type: ignore[assignment]
     try:
         for entry in (tool_calls_log or [])[-12:]:
             if not isinstance(entry, dict):
@@ -978,9 +962,9 @@ def _collect_final_files(tool_calls_log: list) -> list[dict]:
                 continue
             rel = rel.strip()[:300]
             size = 0
-            if resolve_inside_workspace is not None:
+            if _resolve_folder_checked is not None:
                 try:
-                    target = resolve_inside_workspace(rel)
+                    target = _resolve_folder_checked(rel)
                     if target.is_file():
                         size = target.stat().st_size
                     else:
@@ -1005,9 +989,9 @@ def _collect_final_files(tool_calls_log: list) -> list[dict]:
                             irel = f"{folder}/{nm}" if folder else nm
                             if irel in seen:
                                 continue
-                            if resolve_inside_workspace is not None:
+                            if _resolve_folder_checked is not None:
                                 try:
-                                    if not resolve_inside_workspace(irel).is_file():
+                                    if not _resolve_folder_checked(irel).is_file():
                                         continue
                                 except Exception:
                                     continue
@@ -1178,15 +1162,69 @@ def _persist_conversation(user_input: str, assistant_output: str, steps: list | 
     return uid, aid
 
 
-_UNIT_LIMIT = 30
+# ---------------------------------------------------------------------------
+# Context accounting: one MESSAGE is one TURN between the user and the agent.
+# A turn is everything the agent did for one user message: its reply plus every
+# tool step (the call and its output). Steps travel in the normal OpenAI wire
+# format (one assistant message carrying tool_calls, then one tool message per
+# call), but the engine counts the whole turn as ONE message. That is why the
+# 30-message window belongs to the chat history (L6) and a 30-step turn never
+# pushes 30 real user/agent messages out of the context.
+#
+# The ceiling below is NOT a message count: it only protects one runaway turn
+# from sending/storing an unlimited payload. It always drops WHOLE steps
+# (oldest first), so an assistant tool_calls message is never separated from
+# its tool outputs.
+_MESSAGE_LIMIT = 30
+_TURN_CHARS_CEILING = 2_000_000
+_WIRE_MESSAGE_OVERHEAD = 200
 _RESUME_CONTENT_MAX = 4000
 
 
+def _unit_chars(unit: list) -> int:
+    """Approximate wire size of one step group (content + fixed overhead)."""
+    total = 0
+    try:
+        for m in unit or []:
+            if isinstance(m, dict):
+                total += len(str(m.get("content") or "")) + _WIRE_MESSAGE_OVERHEAD
+    except Exception:
+        return total
+    return total
+
+
+def _trim_units_to_ceiling(units: list) -> tuple[list, int]:
+    """Keep the newest whole steps that fit the turn ceiling.
+
+    Returns (kept_units, dropped_count). Always unit-aligned, so a
+    tool_calls message never travels without its tool outputs. Never raises.
+    """
+    try:
+        groups = [u for u in (units or []) if isinstance(u, list) and u]
+    except Exception:
+        return [], 0
+    total = 0
+    kept: list = []
+    for unit in reversed(groups):
+        size = _unit_chars(unit)
+        if kept and total + size > _TURN_CHARS_CEILING:
+            break
+        kept.append(unit)
+        total += size
+    kept.reverse()
+    return kept, len(groups) - len(kept)
+
+
 def _clip_resume_units(units: list | None) -> list:
-    """Bound loop units stored on a STOP marker for Continue. Never raises."""
+    """Bound loop units stored on a STOP marker for Continue.
+
+    Continue resumes the SAME turn, so the stopped turn is one message: every
+    step is kept while the turn fits the ceiling (whole steps only). Never
+    raises.
+    """
     out: list = []
     try:
-        for unit in (units or [])[-_UNIT_LIMIT:]:
+        for unit in (units or []):
             if not isinstance(unit, list):
                 continue
             clipped: list = []
@@ -1211,7 +1249,7 @@ def _clip_resume_units(units: list | None) -> list:
                 out.append(clipped)
     except Exception:
         return []
-    return out
+    return _trim_units_to_ceiling(out)[0]
 
 
 def _units_from_steps(steps: list | None) -> list:
@@ -1298,30 +1336,38 @@ def _restore_dynamic_from_units(units: list, known_tool_names: set, dynamic_tool
         pass
 
 
-def _outgoing_messages(seed: list, units: list, limit: int = _UNIT_LIMIT) -> list:
-    """Per-step provider input: seed + the last N conversation units.
+def _outgoing_messages(seed: list, units: list) -> list:
+    """Per-step provider input: seed + every step of the current turn.
 
-    One unit = one model reply, or one tool call + its output together, so
-    the model always sees what it did in the last 30 units with call/output
-    linkage intact. The seed (system + full L4-L8 context, task included) is
-    sent every step; full history stays in `messages`, only the send is
-    windowed. Never raises.
+    Steps are sent exactly as the OpenAI wire format expects (one assistant
+    message carrying its tool_calls, then one tool message per call). The
+    engine still counts the whole turn as ONE message (_MESSAGE_LIMIT refers
+    to the chat history inside the seed), so steps never shorten the 30 real
+    user/agent messages the model receives.
+
+    Only _TURN_CHARS_CEILING can leave out the OLDEST whole steps of a single
+    runaway turn, and that omission is stated in the request instead of being
+    silent. The seed (system + full L4-L8 context, current task included) is
+    sent every step; full history stays in `messages`. Never raises.
     """
     try:
-        count = int(limit) if isinstance(limit, int) else _UNIT_LIMIT
-        if count < 1:
-            count = _UNIT_LIMIT
-        tail = units[-count:] if len(units) > count else units
-        out = list(seed)
-        for unit in tail:
-            if isinstance(unit, list):
-                out.extend(unit)
-        return out
+        out = list(seed) if isinstance(seed, list) else []
     except Exception:
-        try:
-            return list(seed)
-        except Exception:
-            return []
+        out = []
+    try:
+        kept, dropped = _trim_units_to_ceiling(units)
+    except Exception:
+        return out
+    if dropped:
+        out.append({
+            "role": "assistant",
+            "content": (f"[Context note] {dropped} earlier step(s) of this turn were left out of "
+                        f"this request because the turn exceeded {_TURN_CHARS_CEILING} characters "
+                        "(oldest first). Do not assume they never ran."),
+        })
+    for unit in kept:
+        out.extend(unit)
+    return out
 
 
 def _clear_temp_images_if_any():
@@ -1416,7 +1462,7 @@ def run_loop(
     session_key: str | None = None,
     session_history: str | None = None,
     reuse_user_id: str | None = None,
-    chat_limit: int = 30,
+    chat_limit: int = _MESSAGE_LIMIT,
     resume_stopped: bool = False,
     system_override: str | None = None,
     studio_session: bool = False,
@@ -1534,9 +1580,10 @@ def run_loop(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_context},
     ]
-    # Windowing: `seed` (system + full L4-L8 context) goes out every step;
-    # every turn unit (one reply, or one call + its output) is appended to
-    # `units`, and the provider only ever receives seed + last 30 units.
+    # Context accounting: `seed` (system + full L4-L8 context, including the
+    # last _MESSAGE_LIMIT chat messages) goes out every step. Each step (one
+    # reply plus its tool calls/outputs) is appended to `units`, and all of
+    # them belong to this ONE turn = ONE context message, so they are all sent.
     seed = list(messages)
     units: list[list[dict]] = []
     if resume_stopped:
@@ -1676,7 +1723,8 @@ def run_loop(
 
         try:
             # First injection happened once above (seed); every later step
-            # resends the seed plus only what is new (last 30 units).
+            # resends the seed plus every step this turn already produced
+            # (one turn = one message, so no step is windowed out).
             outgoing = _outgoing_messages(seed, units)
             # NOTE (protocol v1): the provider returns text only, so the
             # loop answers directly. Tool calling via the model returns in a
@@ -2048,7 +2096,8 @@ def run_loop(
                 break
 
         # The step's unit (call + all its outputs) is complete: visible to the
-        # model from the next step on, inside the last-30 window.
+        # model from the next step on. It stays part of this turn (one message),
+        # so it is never dropped for consuming the chat-history window.
         units.append(unit)
         # A mid-step cancel (fresh answer / STOP during a pause) stops now.
         if cancelled:

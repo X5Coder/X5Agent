@@ -1,6 +1,6 @@
 """
 search_files - find files by pattern and optionally grep contents.
-Bounded results, validates path inside project, prevents traversal.
+Bounded results, validated against the working folder (no traversal).
 """
 from __future__ import annotations
 
@@ -35,47 +35,49 @@ def _validate_pattern(p) -> str:
     return s
 
 
-def _workspace_root() -> Path:
+def _working_root() -> Path:
     try:
         import sys as _sys
         proj = Path(__file__).resolve().parents[3]
         if str(proj) not in _sys.path:
             _sys.path.insert(0, str(proj))
-        from core.paths import workspace_root as _ws
-        ws = _ws()
+        from core.workfolder import get_path
+        folder = get_path()
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws.resolve()
+        return folder.resolve()
     except Exception:
         repo = Path(__file__).resolve().parents[4]
-        ws = repo / "X5Agent" / "Workspace"
+        folder = repo / "X5Agent" / "Data" / "default_folder"
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws.resolve()
+        return folder.resolve()
 
 
 def _validate_base_path(p) -> Path:
-    ws = _workspace_root()
+    root = _working_root()
     if p is None:
-        return ws
+        return root
     if not isinstance(p, str):
         raise TypeError("path must be string")
     s = p.strip()
     if not s or s == ".":
-        return ws
-    cand = Path(s)
-    if not cand.is_absolute():
-        cand = (ws / s).resolve()
-    else:
-        cand = cand.resolve()
+        return root
     try:
-        cand.relative_to(ws)
-    except ValueError as exc:
-        raise ValueError(f"Blocked: path must be inside Workspace: {ws}") from exc
+        import sys as _sys
+        proj = Path(__file__).resolve().parents[3]
+        if str(proj) not in _sys.path:
+            _sys.path.insert(0, str(proj))
+        from core.workfolder import resolve
+        cand = resolve(s)
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(f"invalid path: {exc}") from None
     if not cand.exists():
         raise FileNotFoundError(f"search path not found: {p}")
     if not cand.is_dir():

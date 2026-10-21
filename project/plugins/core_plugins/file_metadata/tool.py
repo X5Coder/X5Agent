@@ -1,5 +1,5 @@
 """
-file_metadata - read AND edit metadata of any Workspace file.
+file_metadata - read AND edit metadata of any file in the working folder.
 
 action=read (default) extracts everything available and returns it normally:
 base facts for ANY file (name, size, mime, modified time, sha256) + image
@@ -11,7 +11,7 @@ original is never overwritten. JPEG/TIFF get EXIF tags ( Pillow only, a
 declared dependency; JPEG re-saves with quality="keep" to preserve data),
 PNG gets text chunks. Any other kind is rejected for set.
 
-JAILED inside X5Agent/Workspace only, all sizes/counts bounded, no secrets.
+inside the working folder only, all sizes/counts bounded, no secrets.
 """
 from __future__ import annotations
 
@@ -51,31 +51,32 @@ def _cancelled(cancel_flag) -> bool:
         return False
 
 
-def _workspace_root() -> Path:
+def _folder_root() -> Path:
+    """The agent's current working folder (single owner: core.workfolder)."""
     try:
         import sys as _sys
         proj = Path(__file__).resolve().parents[3]
         if str(proj) not in _sys.path:
             _sys.path.insert(0, str(proj))
-        from core.paths import workspace_root as _ws
-        ws = _ws()
+        from core.workfolder import get_path
+        folder = get_path()
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws.resolve()
+        return folder.resolve()
     except Exception:
         repo = Path(__file__).resolve().parents[4]
-        ws = repo / "X5Agent" / "Workspace"
+        folder = repo / "X5Agent" / "Data" / "default_folder"
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws.resolve()
+        return folder.resolve()
 
 
 def _validate_path(p: str) -> tuple[Path, Path]:
-    """Resolve model-supplied path inside Workspace. Returns (ws, abs)."""
+    """Resolve model-supplied path inside the working folder. Returns (root, abs)."""
     if not isinstance(p, str):
         raise TypeError("path must be string")
     s = p.strip()
@@ -83,21 +84,19 @@ def _validate_path(p: str) -> tuple[Path, Path]:
         raise ValueError("path must be non-empty")
     if len(s) > 500:
         raise ValueError("path too long")
-    ws = _workspace_root()
-    cand = Path(s)
-    if not cand.is_absolute():
-        cand = (ws / s).resolve()
-    else:
-        cand = cand.resolve()
+    root = _folder_root()
     try:
-        cand.relative_to(ws)
+        from core.workfolder import resolve as _resolve_folder
+        cand = _resolve_folder(s)
     except ValueError:
-        raise ValueError(f"Blocked: path must be inside Workspace: {ws}") from None
+        raise
+    except Exception as exc:
+        raise ValueError(f"invalid path: {exc}") from None
     if not cand.exists():
         raise FileNotFoundError(f"File not found: {s[:120]}")
     if not cand.is_file():
         raise ValueError("path is not a file")
-    return ws, cand
+    return root, cand
 
 
 def _sha256(path: Path) -> str:
@@ -369,7 +368,7 @@ def execute(path: str, action: str | None = None, tags=None, cancel_flag=None) -
     try:
         dest.relative_to(ws)
     except ValueError:
-        raise ValueError("Blocked: output escapes Workspace") from None
+        raise ValueError("Blocked: output escapes the working folder") from None
     try:
         if kind == "EXIF":
             applied = _apply_exif(src, dest, clean_tags)

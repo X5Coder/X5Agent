@@ -155,11 +155,11 @@
           <span>Agent</span>
         </button>
 
-        <button class="nav-item" data-nav="workspace" type="button">
+        <button class="nav-item" data-nav="folder" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
           </svg>
-          <span>Workspace</span>
+          <span>Working Folder</span>
         </button>
 
         <button class="nav-item" data-nav="gateway" type="button">
@@ -185,6 +185,16 @@
             <path d="M20 15h2" /><path d="M20 9h2" /><path d="M9 2v2" /><path d="M9 20v2" />
           </svg>
           <span>AI Models</span>
+        </button>
+
+        <button class="nav-item" data-nav="mcp" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="2" />
+            <rect x="14" y="14" width="7" height="7" rx="2" />
+            <path d="M10 6.5h4.5A2.5 2.5 0 0 1 17 9v4" />
+            <path d="M14 17.5h-4.5A2.5 2.5 0 0 1 7 15v-4" />
+          </svg>
+          <span>MCP Servers</span>
         </button>
 
         <div class="nav-divider" aria-hidden="true"></div>
@@ -389,11 +399,10 @@
                 </div>
 
                 <div class="attach-wrap">
-                  <button type="button" class="composer-btn mode-pill" id="modeBtn" aria-label="Agent permission mode" title="Agent permission mode">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                    <span class="mode-label" id="modeLabel">Restricted</span>
+                  <button type="button" class="composer-btn mode-pill" id="folderBtn" aria-label="Working folder" title="Working folder">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></svg>
+                    <span class="mode-label" id="folderLabel">Folder</span>
                   </button>
-                  <div class="attach-menu mode-menu" id="modeMenu"></div>
                 </div>
 
                 <textarea id="composerInput" rows="1" dir="auto" placeholder="Message your agent…"></textarea>
@@ -472,11 +481,10 @@
                 </div>
 
                 <div class="attach-wrap">
-                  <button type="button" class="composer-btn mode-pill" id="schedRunModeBtn" aria-label="Agent permission mode" title="Agent permission mode">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                    <span class="mode-label" id="schedRunModeLabel">Restricted</span>
+                  <button type="button" class="composer-btn mode-pill" id="schedRunFolderBtn" aria-label="Working folder" title="Working folder">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></svg>
+                    <span class="mode-label" id="schedRunFolderLabel">Folder</span>
                   </button>
-                  <div class="attach-menu mode-menu" id="schedRunModeMenu"></div>
                 </div>
 
                 <textarea id="schedRunInput" rows="1" dir="auto" placeholder="Follow up on this task…"></textarea>
@@ -500,12 +508,12 @@
           </div>
         </section>
 
-        <!-- ============ WORKSPACE (agent device) ============ -->
-        <section class="page" data-page="workspace">
+        <!-- ============ WORKING FOLDER (agent device) ============ -->
+        <section class="page" data-page="folder">
           <div class="ws-head" data-anim>
             <div>
-              <h2>Agent Workspace</h2>
-              <p>Everything the agent saves lives here</p>
+              <h2>Working Folder</h2>
+              <p>The one folder the agent reads, writes and runs files in</p>
             </div>
             <div class="ws-actions">
               <button class="glass-btn" id="wsUploadBtn" type="button">Upload file</button>
@@ -557,6 +565,24 @@
           <div class="grid-cards" id="aiModelsGrid"></div>
         </section>
 
+        <!-- ============ MCP SERVERS (remote tools, OAuth) ============ -->
+        <section class="page" data-page="mcp">
+          <div class="ws-head" data-anim>
+            <div>
+              <h2>MCP Servers</h2>
+              <p>Connect a server by URL, authorize it, and review the tools it exposes</p>
+            </div>
+            <div class="ws-actions">
+              <button class="glass-btn" id="addMcpBtn" type="button">+ Add server</button>
+            </div>
+          </div>
+          <div class="mcp-note" id="mcpNote" hidden></div>
+          <div class="grid-cards" id="mcpGrid" aria-live="polite"></div>
+          <div class="grid-empty" id="mcpEmpty" hidden>
+            <span>No MCP servers yet. Add one with its endpoint URL.</span>
+          </div>
+        </section>
+
         <!-- ============ SUBSCRIPTION (same plan cards as the first-run page) ============ -->
         <section class="page" data-page="subscription">
           <div class="pricing-page">
@@ -571,31 +597,6 @@
                 </span>
                 <span class="sub-tool-soon">Soon</span>
               </button>
-            </div>
-
-            <!-- Step 1 (only when the license session is gone): the account itself.
-                 The console stays locked until this account exists and is live. -->
-            <div class="card sub-auth" id="subAuth" hidden data-anim>
-              <div class="sub-auth-copy">
-                <h3 id="subAuthTitle">Create your license account</h3>
-                <p id="subAuthText">
-                  This account is what the admin panel sees. Your 7-day trial starts
-                  immediately, on this device.
-                </p>
-              </div>
-              <form class="sub-auth-form" id="subAuthForm" novalidate>
-                <label class="sub-field">
-                  <span>Email</span>
-                  <input id="subAuthEmail" type="email" autocomplete="email" spellcheck="false" placeholder="you@gmail.com" />
-                </label>
-                <label class="sub-field">
-                  <span>Password</span>
-                  <input id="subAuthPassword" type="password" autocomplete="new-password" placeholder="At least 8 characters" />
-                </label>
-                <button class="btn btn-primary sub-auth-submit" id="subAuthSubmit" type="submit">Create account</button>
-                <p class="sub-auth-msg" id="subAuthMsg" hidden></p>
-                <button class="sub-skip" id="subAuthSwitch" type="button">Already have an account? Sign in</button>
-              </form>
             </div>
 
             <div class="sub-plans" id="subPlans" aria-live="polite">
@@ -702,7 +703,7 @@
       try {
         if (localStorage.getItem("x5_sidebar") !== "expanded") document.body.classList.add("sidebar-collapsed");
         var seg = (location.pathname || "/").replace(/\/+$/, "").split("/").pop() || "";
-        var pages = ["dashboard", "agent", "workspace", "gateway", "skills", "ai-models", "subscription", "settings"];
+        var pages = ["dashboard", "agent", "folder", "gateway", "skills", "ai-models", "subscription", "settings"];
         var page = seg === "" || seg === "index.html" ? "agent" : seg;
         if (pages.indexOf(page) < 0) page = "agent";
         if (page !== "agent") {
@@ -715,7 +716,7 @@
           var titles = {
             dashboard: ["Dashboard", "Overview of your agent activity"],
             agent: ["Agent", "Chat with your AI assistant"],
-            workspace: ["Workspace", "Your agent's files and folders"],
+            folder: ["Working Folder", "Your agent's files and folders"],
             gateway: ["WhatsApp gateway", "Connect and manage your WhatsApp agent"],
             skills: ["Skills", "Reusable instructions for your agent"],
             "ai-models": ["AI Models", "Connect any AI model"],
@@ -750,6 +751,6 @@
   <div class="chart-tip" id="chartTip"></div>
   <div class="toast-wrap" id="toastWrap"></div>
 
-  <script type="module" src="/js/app.js?v=104"></script>
+  <script type="module" src="/js/app.js?v=105"></script>
 </body>
 </html>

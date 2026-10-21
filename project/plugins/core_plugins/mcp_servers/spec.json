@@ -1,0 +1,27 @@
+{
+  "name": "mcp_servers",
+  "description": "Drive the MCP servers the user connected on the MCP Servers page (remote tools over OAuth). action=list returns every server with its name, status and tool count; action=tools returns one server's tools with their input JSON Schema; action=call runs one of those tools with an arguments JSON object string. Always list -> tools -> call, never invent a server or tool name. Only a connected server can be called; if it needs authorization, ask the user to press Authorize on the MCP Servers page.",
+  "inputs": {
+    "action": {
+      "type": "string",
+      "enum": ["list", "tools", "call"],
+      "required": true,
+      "description": "list = all servers; tools = one server's tool list + schemas; call = run one tool."
+    },
+    "server": {
+      "type": "string",
+      "required": false,
+      "description": "Server name from action=list (or its id). Required for tools and call."
+    },
+    "tool": {
+      "type": "string",
+      "required": false,
+      "description": "Tool name from action=tools. Required for call."
+    },
+    "arguments": {
+      "type": "string",
+      "required": false,
+      "description": "JSON object string of the tool arguments that match its input_schema, e.g. {\"query\":\"hello\"}. Omit or use {} when the tool takes none."
+    }
+  }
+}

@@ -129,20 +129,130 @@ def _reachable_url(port: int = CONSOLE_PORT) -> str:
 
 
 def _pip_env() -> dict:
-    """Environment for pip subprocess calls (quiet root warning).
+    """Environment for pip/probe subprocess calls (quiet root warning).
+
+    PYTHONNOUSERSITE mirrors the launcher: `launch.py` hides the per-user
+    site-packages on purpose, so a dependency that only exists there cannot be
+    imported by the console. Every probe and pip call must share that view,
+    otherwise the health check reports a green install while the console dies
+    with "No module named 'jwt'".
 
     PIP_ROOT_USER_ACTION is only understood by new pip (ours is refreshed
     first); old pip ignores unknown PIP_* names, so this is safe everywhere.
     """
     env = dict(os.environ)
     env.setdefault("PIP_ROOT_USER_ACTION", "ignore")
+    env["PYTHONNOUSERSITE"] = "1"
     return env
+
+
+VENV_DIR = PROJECT_ROOT.parent / ".venv"
+_VENV_MARKER = "X5_VENV_BOOTSTRAP"
+
+
+def _in_venv() -> bool:
+    """True when this interpreter already runs inside a virtual environment."""
+    return sys.prefix != sys.base_prefix
+
+
+def _venv_python(root: Path) -> Path | None:
+    for candidate in (root / "Scripts" / "python.exe", root / "bin" / "python"):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _site_writable() -> bool:
+    """True when pip could install into THIS interpreter without --user."""
+    try:
+        import site as _site
+
+        targets = list(_site.getsitepackages())
+    except Exception:
+        return True
+    for target in targets:
+        probe = Path(target) / ".x5-write-probe"
+        try:
+            probe.write_text("ok", encoding="ascii")
+        except OSError:
+            continue
+        try:
+            probe.unlink()
+        except OSError:
+            pass
+        return True
+    return False
+
+
+def _create_project_venv() -> Path | None:
+    """Create .venv next to the repo; returns its interpreter or None."""
+    existing = _venv_python(VENV_DIR)
+    if existing is not None:
+        return existing
+    print(f"  creating the project environment ({VENV_DIR.name})...")
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "venv", str(VENV_DIR)],
+            capture_output=True, text=True, timeout=600, env=_pip_env(),
+        )
+    except Exception as exc:
+        print(f"  ERROR: cannot create {VENV_DIR.name} ({str(exc)[:120]})",
+              file=sys.stderr)
+        return None
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()[:200]
+        print(f"  ERROR: venv creation failed (exit {proc.returncode}) {detail}",
+              file=sys.stderr)
+        return None
+    python = _venv_python(VENV_DIR)
+    if python is None:
+        print(f"  ERROR: {VENV_DIR.name} has no interpreter", file=sys.stderr)
+        return None
+    return python
+
+
+def ensure_environment() -> bool:
+    """Make sure the running interpreter can actually host the console.
+
+    `launch.py` hides the per-user site-packages by design, so a dependency pip
+    installs with `--user` (what pip does when this interpreter's own
+    site-packages is not writable, e.g. a stock Windows Python under Program
+    Files) is invisible at runtime.
+
+    When that happens the installer bootstraps a project environment (.venv
+    next to the repo) and re-execs itself inside it, so pip, the dependency
+    sync, the owner step and the console all run from one interpreter.
+    Bounded: one bootstrap per run (marker env var), then a clear error.
+    """
+    existing = _venv_python(VENV_DIR)
+    if existing is not None and Path(sys.executable).resolve() == existing.resolve():
+        return True
+    if os.environ.get(_VENV_MARKER) == "1":
+        print("  ERROR: the project environment could not be activated. Install "
+              "the requirements into a Python you own (or re-run this command "
+              "from a shell inside the project folder).", file=sys.stderr)
+        return False
+    if existing is None and _site_writable():
+        return True
+    python = _create_project_venv()
+    if python is None:
+        return False
+    env = dict(os.environ)
+    env[_VENV_MARKER] = "1"
+    print(f"  using the project environment ({VENV_DIR})")
+    try:
+        os.execve(str(python),
+                  [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
+                  env)
+    except Exception as exc:
+        print(f"  ERROR: cannot restart inside {VENV_DIR.name} "
+              f"({str(exc)[:120]})", file=sys.stderr)
+        return False
+    return True
 
 
 def _has_nvidia_gpu() -> bool:
     """Best-effort NVIDIA GPU check via nvidia-smi. False when unsure.
-
-    When unsure the caller keeps the default (CUDA) install path so GPU
     machines never lose GPU support because of a failed detection.
     """
     try:

@@ -1,12 +1,12 @@
 """
-file_to_base64 - encode any Workspace file to base64 WITHOUT polluting context.
+file_to_base64 - encode any file in the working folder to base64 WITHOUT polluting context.
 
 Base64 text is ~33% larger than the file and would destroy the conversation
 context, so the tool NEVER returns it: it writes the base64 into a .b64.txt
-file in Workspace (same folder) and returns one short sentence plus metadata
+file in the working folder (same folder) and returns one short sentence plus metadata
 (paths, sizes, mime, sha256, data-url prefix, short preview). The model must
 reference the saved path in later calls instead of pasting the text.
-JAILED inside X5Agent/Workspace only, bounded input size, no secrets.
+inside the working folder only, bounded input size, no secrets.
 """
 from __future__ import annotations
 
@@ -37,31 +37,32 @@ def _cancelled(cancel_flag) -> bool:
         return False
 
 
-def _workspace_root() -> Path:
+def _folder_root() -> Path:
+    """The agent's current working folder (single owner: core.workfolder)."""
     try:
         import sys as _sys
         proj = Path(__file__).resolve().parents[3]
         if str(proj) not in _sys.path:
             _sys.path.insert(0, str(proj))
-        from core.paths import workspace_root as _ws
-        ws = _ws()
+        from core.workfolder import get_path
+        folder = get_path()
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws.resolve()
+        return folder.resolve()
     except Exception:
         repo = Path(__file__).resolve().parents[4]
-        ws = repo / "X5Agent" / "Workspace"
+        folder = repo / "X5Agent" / "Data" / "default_folder"
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws.resolve()
+        return folder.resolve()
 
 
 def _validate_path(p: str) -> tuple[Path, Path]:
-    """Resolve model-supplied path inside Workspace. Returns (ws, abs)."""
+    """Resolve model-supplied path inside the working folder. Returns (root, abs)."""
     if not isinstance(p, str):
         raise TypeError("path must be string")
     s = p.strip()
@@ -69,16 +70,14 @@ def _validate_path(p: str) -> tuple[Path, Path]:
         raise ValueError("path must be non-empty")
     if len(s) > 500:
         raise ValueError("path too long")
-    ws = _workspace_root()
-    cand = Path(s)
-    if not cand.is_absolute():
-        cand = (ws / s).resolve()
-    else:
-        cand = cand.resolve()
+    root = _folder_root()
     try:
-        cand.relative_to(ws)
+        from core.workfolder import resolve as _resolve_folder
+        cand = _resolve_folder(s)
     except ValueError:
-        raise ValueError(f"Blocked: path must be inside Workspace: {ws}") from None
+        raise
+    except Exception as exc:
+        raise ValueError(f"invalid path: {exc}") from None
     if not cand.exists():
         raise FileNotFoundError(f"File not found: {s[:120]}")
     if not cand.is_file():
@@ -88,7 +87,7 @@ def _validate_path(p: str) -> tuple[Path, Path]:
         raise ValueError("File is empty")
     if size > MAX_INPUT_BYTES:
         raise ValueError(f"File too large ({size} bytes, max {MAX_INPUT_BYTES})")
-    return ws, cand
+    return root, cand
 
 
 def _validate_output_name(v, src: Path) -> str:
@@ -141,7 +140,7 @@ def execute(path: str, output_name: str | None = None, cancel_flag=None) -> dict
     try:
         dest.relative_to(ws)
     except ValueError:
-        raise ValueError("Blocked: output escapes Workspace") from None
+        raise ValueError("Blocked: output escapes the working folder") from None
     dest.write_text(text, encoding="utf-8")
     digest = _sha256(src)
     mime, _ = mimetypes.guess_type(src.name)

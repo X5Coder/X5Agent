@@ -3,7 +3,7 @@ X5Browser tool executor — validates model-generated args, runs the browser,
 and normalizes every result into {event, ok, ...} for the agent loop.
 
 Validation (model output is untrusted): type/shape per catalog spec, bounds,
-http(s)-only URLs, and Workspace confinement for file paths (upload/export).
+http(s)-only URLs, and working-folder confinement for file paths (upload/export).
 Deep validation stays in the library; failures there return ok=False with the
 library's cause + suggested fix so the agent can recover (e.g. ref_not_found
 -> re-snapshot).
@@ -116,11 +116,11 @@ def _check_type(name: str, key: str, value: Any, kind: str) -> Any:
     raise ValueError(f"{name}: unknown input kind {kind} for {key}")
 
 
-def _require_workspace_path(raw: Any, name: str, key: str) -> str:
-    from core.paths import resolve_inside_workspace
+def _require_folder_path(raw: Any, name: str, key: str) -> str:
+    from core.workfolder import resolve as _resolve_folder
     if not isinstance(raw, str) or not raw.strip():
-        raise ValueError(f"{name}: {key} must be a non-empty workspace path")
-    resolved = resolve_inside_workspace(raw.strip())
+        raise ValueError(f"{name}: {key} must be a non-empty path in the working folder")
+    resolved = _resolve_folder(raw.strip())
     return str(resolved)
 
 
@@ -183,11 +183,11 @@ def validate_args(name: str, args: Any) -> dict:
             raise ValueError(f"{name}: paths must not be empty")
         if len(paths) > 10:
             raise ValueError(f"{name}: at most 10 paths")
-        clean["paths"] = [_require_workspace_path(p, name, "paths[]") for p in paths]
+        clean["paths"] = [_require_folder_path(p, name, "paths[]") for p in paths]
     if name == "answer_popup" and "paths" in clean and clean["paths"] is not None:
-        clean["paths"] = [_require_workspace_path(p, name, "paths[]") for p in clean["paths"]]
+        clean["paths"] = [_require_folder_path(p, name, "paths[]") for p in clean["paths"]]
     if name == "export_page" and "path" in clean:
-        clean["path"] = _require_workspace_path(clean["path"], name, "path")
+        clean["path"] = _require_folder_path(clean["path"], name, "path")
     if name == "fill_form" and "fields" in clean:
         fields = clean["fields"]
         if not fields:

@@ -1,6 +1,6 @@
 {
   "name": "terminal",
-  "description": "Shell execution with scope (no per-command question): limited_access (default) runs INSIDE X5Agent/Workspace only and blocks any outside path; full_access runs any command on the whole machine. Scope is set from the Agent permission menu.",
+  "description": "Execute shell commands on this machine with full access (no jail, no per-command question). The default working directory is the agent's working folder; any existing folder can be passed as workdir. Ask the user before destructive commands like deleting files.",
   "inputs": {
     "command": {
       "type": "string",
@@ -10,7 +10,7 @@
     "workdir": {
       "type": "string",
       "required": false,
-      "description": "Directory to run in (limited: Workspace only; full: anywhere)."
+      "description": "Directory to run in. Relative paths resolve against the working folder; absolute folders anywhere are allowed."
     },
     "timeout": {
       "type": "integer",

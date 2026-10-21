@@ -4,7 +4,7 @@
 """Gateway dispatcher — unified commands + 5s coalescing + queued runs.
 
 Owns: per-chat state machines, command routing (/browser /dashboard
-/cancel), media-to-text conversion (voice STT, image/file Workspace hints),
+/cancel), media-to-text conversion (voice STT, image/file working-folder hints),
 agent execution through the shared site session (the Agent page renders the
 same run live).
 
@@ -181,13 +181,13 @@ def is_allowed(msg: dict) -> bool:
         return False
 
 
-def _mirror_workspace(blob: bytes, display: str) -> str | None:
-    """Workspace copy keeping the ORIGINAL name (stable file_id — the SAME
-    rule as the site chat mirror, so gateway uploads show in the Workspace
-    map under their own name); short suffix on collision. Jailed.
-    Best-effort: returns rel file_id or None. Never raises."""
+def _mirror_folder(blob: bytes, display: str) -> str | None:
+    """Working-folder copy keeping the ORIGINAL name (stable file_id — the
+    SAME rule as the site chat mirror, so gateway uploads show in the folder
+    map under their own name); short suffix on collision. Best-effort:
+    returns rel file_id or None. Never raises."""
     try:
-        from core.paths import workspace_root as _ws
+        from core.workfolder import get_path as _ws
 
         ws = _ws()
         ws.mkdir(parents=True, exist_ok=True)
@@ -218,15 +218,15 @@ def _mirror_workspace(blob: bytes, display: str) -> str | None:
         return None
 
 
-def _ws_full_path(rel: str | None) -> str | None:
-    """Full exact path of a Workspace file_id (forward slashes, so the agent
-    pastes it as-is into any code or HTML). Never raises."""
+def _folder_full_path(rel: str | None) -> str | None:
+    """Full exact path of a working-folder file_id (forward slashes, so the
+    agent pastes it as-is into any code or HTML). Never raises."""
     try:
         if not rel or not isinstance(rel, str):
             return None
-        from core.paths import workspace_root as _ws
+        from core.workfolder import get_path as _get_folder
 
-        return str((_ws() / rel).resolve()).replace("\\", "/")
+        return str((_get_folder() / rel).resolve()).replace("\\", "/")
     except Exception:
         return None
 
@@ -267,16 +267,16 @@ def _convert_part(part: dict) -> tuple[str, str]:
         return (f"[voice message]: {heard}" if heard else "[voice message — could not transcribe]"), ""
     if kind == "image":
         ext = "png" if "png" in mime else "webp" if "webp" in mime else "jpg"
-        # The Workspace mirror IS the image's home and identity (file_id).
+        # The working-folder mirror IS the image's home and identity (file_id).
         # The Data copy is only a fallback when the mirror fails, so no
         # orphan files accumulate on disk.
         try:
-            ws_file = _mirror_workspace(blob, name)
+            ws_file = _mirror_folder(blob, name)
             if ws_file:
-                _abs = _ws_full_path(ws_file) or ws_file
+                _abs = _folder_full_path(ws_file) or ws_file
                 hint = (f'- image: name="{name}" file_id="{ws_file}"'
                         f' | path: "{_abs}" | type: {ext} | size: {len(blob)} bytes'
-                        f'\n- file_id="{ws_file}": image above, analyze it first (also in Workspace)')
+                        f'\n- file_id="{ws_file}": image above, analyze it first (also in the working folder)')
                 return text, hint
             from core.paths import data_subdir as _ds
 
@@ -289,15 +289,15 @@ def _convert_part(part: dict) -> tuple[str, str]:
             return text, hint
         except Exception:
             return text or "[image — could not save]", ""
-    ws_file = _mirror_workspace(blob, name)
+    ws_file = _mirror_folder(blob, name)
     if not ws_file:
         return text or f"[file received: {name}]", ""
-    _abs = _ws_full_path(ws_file) or ws_file
+    _abs = _folder_full_path(ws_file) or ws_file
     _ext = Path(ws_file).suffix.lower().lstrip(".") or "no-ext"
     if _ext in _VIDEO_EXTS:
         hint = (f'- video: name="{name}" file_id="{ws_file}"'
                 f' | path: "{_abs}" | type: {_ext} | size: {len(blob)} bytes'
-                f'\n- file_id="{ws_file}": video above, process it first (also in Workspace)')
+                f'\n- file_id="{ws_file}": video above, process it first (also in the working folder)')
     else:
         hint = (f'- document: name="{name}" file_id="{ws_file}"'
                 f' | path: "{_abs}" | type: {_ext} | size: {len(blob)} bytes'

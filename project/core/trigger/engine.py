@@ -67,12 +67,12 @@ def _mark_handled(lib_id: str) -> bool:
     except Exception:
         return False
 
-# Approved inbox/outbox layout (Workspace-relative). outbox/done is NEVER watched.
+# Approved inbox/outbox layout (working-folder-relative). outbox/done is NEVER watched.
 FORBIDDEN_WATCH_SUFFIXES = ("outbox/done", "outbox\\done")
 
 
 def _resolve_watch_dir(watch_path: str) -> Path:
-    """Resolve watch_path inside Workspace first, fallback legacy project-relative. Never raises."""
+    """Resolve watch_path inside the working folder. Never raises."""
     raw = (watch_path or "").strip() or "inbox/docs"
     # Block outbox/done explicitly to prevent write->trigger infinite loops.
     lowered = raw.replace("\\", "/").lower().strip("/")
@@ -86,26 +86,11 @@ def _resolve_watch_dir(watch_path: str) -> Path:
         _root = _proj if _proj.name == "project" else Path(__file__).resolve().parents[3]
         if str(_root) not in _sys.path:
             _sys.path.insert(0, str(_root))
-        from core.paths import resolve_inside_workspace, workspace_root
-        # Workspace-relative (preferred): inbox/docs, outbox/ready_upload, ...
-        if not Path(raw).is_absolute():
-            try:
-                return resolve_inside_workspace(raw)
-            except ValueError:
-                pass
-        else:
-            # Absolute outside Workspace is blocked.
-            try:
-                return resolve_inside_workspace(raw)
-            except ValueError:
-                raise ValueError("watch_path must be inside Workspace")
-        ws = workspace_root().resolve()
-        cand = (ws / raw).resolve()
+        from core.workfolder import resolve as _resolve_folder
         try:
-            cand.relative_to(ws)
-            return cand
+            return _resolve_folder(raw)
         except ValueError:
-            raise ValueError("watch_path must be inside Workspace")
+            raise ValueError("watch_path must be inside the working folder") from None
     except ValueError:
         raise
     except Exception:

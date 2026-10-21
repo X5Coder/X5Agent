@@ -25,7 +25,7 @@ import zipfile
 from pathlib import Path
 
 BACKUP_VERSION = 1
-# Resource limits (Rule 74): a full Data+Workspace backup stays far below
+# Resource limits (Rule 74): a full Data backup stays far below
 # this on real installs; the cap only stops abuse/accidents.
 BACKUP_MAX_BYTES = 2 * 1024 * 1024 * 1024
 BACKUP_MAX_FILES = 50000
@@ -41,9 +41,9 @@ def _roots():
     proj = Path(__file__).resolve().parents[2]
     if str(proj) not in _sys.path:
         _sys.path.insert(0, str(proj))
-    from core.paths import data_root, ensure_x5agent, workspace_root
+    from core.paths import data_root, ensure_x5agent
     ensure_x5agent()
-    return data_root(), workspace_root()
+    return data_root()
 
 
 def _skills_dir() -> Path:
@@ -100,17 +100,17 @@ def _manifest() -> dict:
     return {
         "version": BACKUP_VERSION,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "contains": ["Data", "Workspace", "skills"],
+        "contains": ["Data", "skills"],
     }
 
 
 def create_backup_zip() -> Path:
-    """Zip Data+Workspace+skills into a temp .zip file. Caller must delete it."""
+    """Zip Data+skills into a temp .zip file. Caller must delete it."""
     import sys as _sys
     proj = Path(__file__).resolve().parents[2]
     if str(proj) not in _sys.path:
         _sys.path.insert(0, str(proj))
-    data_dir, ws_dir = _roots()
+    data_dir = _roots()
     import os as _os
     _fd, _path = tempfile.mkstemp(prefix="x5_backup_", suffix=".zip")
     try:
@@ -124,7 +124,7 @@ def create_backup_zip() -> Path:
     try:
         with zipfile.ZipFile(str(tmp), "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
             zf.writestr(_MANIFEST_NAME, json.dumps(_manifest(), ensure_ascii=False, indent=2))
-            for base, prefix in ((data_dir, "Data"), (ws_dir, "Workspace"), (skills_dir, "skills")):
+            for base, prefix in ((data_dir, "Data"), (skills_dir, "skills")):
                 if not base.is_dir():
                     continue
                 for path in sorted(base.rglob("*")):
@@ -170,10 +170,11 @@ def _safe_target(root: Path, rel: str) -> Path:
 
 
 def restore_backup_zip(zip_path: Path | str) -> dict:
-    """Validate + extract a backup zip over Data/Workspace/skills. Returns counts.
+    """Validate + extract a backup zip over Data/skills. Returns counts.
 
-    Only Data/*, Workspace/* and skills/* entries are restored (+ manifest
-    checked). System paths (project/* other than skills, models, absolute,
+    Only Data/*, skills/* and (legacy) Workspace/* entries are restored
+    (+ manifest checked); legacy Workspace files land in the default working
+    folder. System paths (project/* other than skills, models, absolute,
     traversal) are rejected. Never touches code or embedding weights.
     Raises ValueError on invalid.
     """
@@ -188,8 +189,10 @@ def restore_backup_zip(zip_path: Path | str) -> dict:
         raise ValueError("backup size out of bounds (max 2GB)")
     if not zipfile.is_zipfile(str(zp)):
         raise ValueError("not a zip backup")
-    data_dir, ws_dir = _roots()
+    data_dir = _roots()
     skills_dir = _skills_dir()
+    from core.paths import default_folder_root
+    folder_dir = default_folder_root()
     with zipfile.ZipFile(str(zp), "r") as zf:
         infos = zf.infolist()
         if len(infos) > BACKUP_MAX_FILES + 1:
@@ -213,7 +216,7 @@ def restore_backup_zip(zip_path: Path | str) -> dict:
                 rel = name[len("Workspace/"):].strip("/")
                 if not rel:
                     continue
-                targets.append((info, _safe_target(ws_dir, rel)))
+                targets.append((info, _safe_target(folder_dir, rel)))
             elif name.startswith("skills/"):
                 rel = name[len("skills/"):].strip("/")
                 if not rel:
@@ -224,11 +227,11 @@ def restore_backup_zip(zip_path: Path | str) -> dict:
                 # restore is client-data only by design.
                 continue
         if not targets:
-            raise ValueError("empty backup (no Data/Workspace/skills entries)")
+            raise ValueError("empty backup (no Data/skills entries)")
         # Pass 2: extract (bounded per-file, skip dirs/symlinks-in-zip).
         restored = 0
         data_n = 0
-        ws_n = 0
+        folder_n = 0
         skills_n = 0
         for info, dest in targets:
             if info.is_dir():
@@ -249,7 +252,7 @@ def restore_backup_zip(zip_path: Path | str) -> dict:
                 try:
                     resolved = dest.resolve()
                 except Exception:
-                    ws_n += 1
+                    folder_n += 1
                     continue
                 try:
                     resolved.relative_to(data_dir.resolve())
@@ -263,9 +266,9 @@ def restore_backup_zip(zip_path: Path | str) -> dict:
                     continue
                 except ValueError:
                     pass
-                ws_n += 1
+                folder_n += 1
             except ValueError:
                 raise
             except Exception as e:
                 raise OSError(f"restore failed at {dest.name}: {e}"[:200]) from None
-    return {"ok": True, "files": restored, "data_files": data_n, "workspace_files": ws_n, "skills_files": skills_n}
+    return {"ok": True, "files": restored, "data_files": data_n, "folder_files": folder_n, "skills_files": skills_n}

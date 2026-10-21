@@ -54,6 +54,9 @@ tmp/
 # WhatsApp bridge deps (installed via npm, never commit)
 project/gateway/whatsapp/bridge/node_modules/
 
+# Local dev tooling (never committed, never shipped)
+dev/
+
 # Release builds and installer staging (never committed)
 dist/
 installer/payload/

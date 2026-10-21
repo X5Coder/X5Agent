@@ -8,8 +8,8 @@ APIs, Picsum fallback), downloads each hit, verifies the bytes by magic
 number, and returns ready-to-use metadata per image.
 
 Two homes, one tool:
-- main agent (no studio_id): verified copies land in Workspace/images/
-  and come back with their Workspace file path (the reply-end card
+- main agent (no studio_id): verified copies land in <working folder>/images/
+  and come back with their working-folder file path (the reply-end card
   reads them from there).
 - studio turn (studio_id given): verified bytes land STRAIGHT in that
   studio's assets and come back as asset src paths — zero Workspace
@@ -101,10 +101,10 @@ def _validate_kind(v: Any) -> str:
 
 
 def _validate_studio_id(v: Any) -> str | None:
-    """Studio home for this call (None = main agent, Workspace home).
+    """Studio home for this call (None = main agent, working-folder home).
 
     When given, the studio must already exist — pictures land straight in
-    its assets and the output carries asset src paths (never Workspace).
+    its assets and the output carries asset src paths (never a folder path).
     The loop only forwards studio_id inside studio sessions (it strips it
     in the main chat), so the main agent can never write studio assets.
     """
@@ -132,10 +132,10 @@ def _validate_studio_id(v: Any) -> str | None:
 
 
 def studio_spec() -> dict:
-    """The studio face of this tool (self-contained, zero Workspace words).
+    """The studio face of this tool (self-contained, zero folder words).
 
     Studio sessions are pre-seeded with THIS spec instead of spec.json, so
-    the studio context never mentions Workspace files: pictures land in
+    the studio context never mentions working-folder files: pictures land in
     the studio's own assets and come back as asset src paths.
     """
 
@@ -511,7 +511,7 @@ def _plan(query: str, kind: str) -> list:
 
 
 # --------------------------------------------------------------------------
-# Download + verify + save (Workspace jail, traversal-proof)
+# Download + verify + save (working-folder path, traversal-proof)
 # --------------------------------------------------------------------------
 
 def _sniff(data: bytes, ctype: str) -> str | None:
@@ -538,18 +538,18 @@ def _slug(query: str) -> str:
 
 
 def _save(query: str, source: str, index: int, ext: str, data: bytes) -> str:
-    """Save verified bytes into Workspace/images/. Returns the rel path."""
-    from core.paths import resolve_inside_workspace
+    """Save verified bytes into <working folder>/images/. Returns the rel path."""
+    from core.workfolder import resolve as _resolve_folder
 
     base = f"{_slug(query)}_{source}_{index}.{ext}"
     for attempt in range(100):
         rel = f"images/{base}" if attempt == 0 else f"images/{base[:-len(ext)-1]}_{attempt}.{ext}"
-        target = resolve_inside_workspace(rel)
+        target = _resolve_folder(rel)
         if not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
             return rel.replace("\\", "/")
-    raise RuntimeError("could not pick a free file name in Workspace/images/")
+    raise RuntimeError("could not pick a free file name in <working folder>/images/")
 
 
 def _save_studio_asset(sid: str, query: str, source: str,
@@ -643,7 +643,7 @@ def execute(query: str = "", count: int | None = None, kind: str | None = None,
         source = str(cand.get("source") or "web")
         title = str(cand.get("title") or q)[:120]
         if sid is None:
-            # Main agent home: Workspace file + metadata (card reads it).
+            # Main agent home: working-folder file + metadata (card reads it).
             try:
                 rel = _save(q, source, len(images) + 1, ext, raw)
             except Exception as e:

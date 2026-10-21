@@ -110,11 +110,11 @@ def test_restore_rejects_non_zip():
         tmp.unlink(missing_ok=True)
 
 
-def test_backup_roundtrip_restores_workspace_file():
+def test_backup_roundtrip_restores_folder_file():
     from core.backup import service as _backup
-    from core.paths import workspace_root
+    from core.workfolder import get_path as folder_path
     name = f"UT_backup_{uuid.uuid4().hex[:8]}.txt"
-    target = workspace_root() / name
+    target = folder_path() / name
     target.write_text("backup-roundtrip", encoding="utf-8")
     tmp = _backup.create_backup_zip()
     try:

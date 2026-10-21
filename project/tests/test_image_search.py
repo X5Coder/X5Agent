@@ -196,4 +196,4 @@ def test_collect_final_images_picks_workspace_card_files():
          "result": {"success": False, "output": {"images": [{"file": "images/no.jpg"}]}}},
     ]
     got = _collect_final_images(log)
-    assert got == [{"workspace": "images/cat_1.jpg"}]
+    assert got == [{"folder": "images/cat_1.jpg"}]

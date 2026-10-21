@@ -3,19 +3,17 @@ X5Agent path resolver - single source of truth for sandbox layout.
 
 Layout (created on first load):
   <repo>/X5Agent/
-    Workspace/   # ONLY place the model may read/write/execute (its device)
     Data/        # ALL user data (zip backup): database, vector, files, skills text, plugin configs, .env
       database/ vector/ files/images files/audio files/videos skills/ configs/plugin_configs/
+      default_folder/  # built-in working folder until the user picks another one
 
 Model weights live in project/models/<type>/<name> (NOT in X5Agent).
 System Core (immutable engine + plugins + tool code) lives in project/
 and is logically X5Agent/System Core - never writable via model tools.
 
-System Core (immutable engine + plugins + tool code) lives in project/
-and is logically X5Agent/System Core - never writable via model tools.
-
-All model-facing filesystem/terminal tools MUST resolve against Workspace.
-Internal services (memories, skills_view, embeddings) read Data directly.
+File tools resolve against the user-chosen working folder (core/workfolder.py,
+default X5Agent/Data/default_folder); the terminal is unrestricted. Internal
+services (memories, skills_view, embeddings) read Data directly.
 """
 from __future__ import annotations
 
@@ -31,8 +29,9 @@ def x5agent_root() -> Path:
     return _repo_root() / "X5Agent"
 
 
-def workspace_root() -> Path:
-    return x5agent_root() / "Workspace"
+def default_folder_root() -> Path:
+    """Built-in working folder used until the user picks another one."""
+    return data_root() / "default_folder"
 
 
 def data_root() -> Path:
@@ -81,16 +80,10 @@ def data_subdir(*parts: str) -> Path:
 
 def _layout_dirs() -> list[Path]:
     """The X5Agent layout this module owns, in creation order."""
-    ws = workspace_root()
     dr = data_root()
     return [
-        ws,
-        ws / "inbox" / "docs",
-        ws / "inbox" / "tts",
-        ws / "inbox" / "media",
-        ws / "outbox" / "done",
-        ws / "outbox" / "ready_upload",
         dr,
+        dr / "default_folder",
         dr / "database",
         dr / "database" / "studio_sessions",
         dr / "studios",
@@ -104,11 +97,11 @@ def _layout_dirs() -> list[Path]:
 
 
 def ensure_x5agent() -> dict[str, str]:
-    """Create X5Agent/{Workspace,Data} + Data subdirs. Idempotent. Never raises.
+    """Create X5Agent/Data + its subdirs. Idempotent. Never raises.
 
     The stores resolve every path through here, so this runs on each path build
     and the steady state has to be cheap: when the layout is already complete it
-    only checks existence (a few stats) instead of re-issuing all sixteen mkdir
+    only checks existence (a few stats) instead of re-issuing every mkdir
     calls, which cost milliseconds per call. A directory that is missing — or a
     tree that was deleted underneath us — still triggers the full pass, so the
     layout exists whenever this returns.
@@ -127,45 +120,6 @@ def ensure_x5agent() -> dict[str, str]:
     except Exception:
         pass
     return created
-
-
-def is_inside_workspace(candidate: Path) -> bool:
-    """True if resolved candidate is inside Workspace (or is Workspace itself)."""
-    try:
-        ws = workspace_root().resolve()
-        cand = candidate.resolve() if candidate.is_absolute() else (ws / str(candidate)).resolve()
-        try:
-            cand.relative_to(ws)
-            return True
-        except ValueError:
-            return False
-    except Exception:
-        return False
-
-
-def resolve_inside_workspace(user_path: str) -> Path:
-    """
-    Resolve a model-supplied path strictly inside Workspace.
-    Raises ValueError if escape is attempted. Never trusts input.
-    """
-    if not isinstance(user_path, str):
-        raise TypeError("path must be string")
-    s = user_path.strip()
-    if not s:
-        raise ValueError("path must be non-empty")
-    if len(s) > 500:
-        raise ValueError("path too long")
-    ws = workspace_root().resolve()
-    cand = Path(s)
-    if not cand.is_absolute():
-        cand = (ws / s).resolve()
-    else:
-        cand = cand.resolve()
-    try:
-        cand.relative_to(ws)
-    except ValueError:
-        raise ValueError(f"Blocked: outside Workspace. Workspace is {ws}. Got: {user_path[:120]}") from None
-    return cand
 
 
 def legacy_project_root() -> Path:

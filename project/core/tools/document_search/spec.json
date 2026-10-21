@@ -1,11 +1,11 @@
 {
   "name": "document_search",
-  "description": "Semantic search inside ONE uploaded document file (Workspace file_id). Supported files: PDF (.pdf), Word (.docx/.doc), Excel (.xlsx/.xls/.csv), PowerPoint (.pptx/.ppt), and text/data (.txt/.md/.html/.json/.xml). The file is converted to organized markdown via MarkItDown, split into 300-word chunks, and embedded — scanned PDF pages with almost no text are transcribed by the vision model first. Call with the Workspace file_id (e.g. report.pdf), a query sentence to compare, and how many chunks to return (top_k, min 1). The file_id MUST be a supported type or the call is rejected — check the Workspace block or list first.",
+  "description": "Semantic search inside ONE uploaded document file (working-folder file_id). Supported files: PDF (.pdf), Word (.docx/.doc), Excel (.xlsx/.xls/.csv), PowerPoint (.pptx/.ppt), and text/data (.txt/.md/.html/.json/.xml). The file is converted to organized markdown via MarkItDown, split into 300-word chunks, and embedded — scanned PDF pages with almost no text are transcribed by the vision model first. Call with the file_id inside the working folder (e.g. report.pdf), a query sentence to compare, and how many chunks to return (top_k, min 1). The file_id MUST be a supported type or the call is rejected — check the working-folder map or list first.",
   "inputs": {
     "file_id": {
       "type": "string",
       "required": true,
-      "description": "Workspace-relative document path, e.g. report.pdf or docs/budget.xlsx. Must be a supported type."
+      "description": "Path inside the working folder, e.g. report.pdf or docs/budget.xlsx. Must be a supported type."
     },
     "query": {
       "type": "string",

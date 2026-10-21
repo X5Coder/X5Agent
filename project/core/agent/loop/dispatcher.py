@@ -16,9 +16,8 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 # Registry: name -> (module_path, spec)
-# CORE = always in context. workspace + document_search live in core/tools on
-# disk but are classified discoverable (behind tool_search) per product
-# decision. There is no "trigger" tool: trigger_search alone searches AND
+# CORE = always in context. document_search lives in core/tools on disk but
+# is classified discoverable (behind tool_search) per product decision. There is no "trigger" tool: trigger_search alone searches AND
 # manages all library + project triggers (core.tools.trigger.tool is only its
 # internal implementation module, never exposed to the model).
 # studio_page + studio_read stay registered here ONLY so the studio branch
@@ -38,10 +37,10 @@ _CORE_MAP = {
     "skill_create": "plugins.core_plugins.skill_create.tool",
     "terminal": "core.tools.terminal.tool",
     "wait": "core.tools.wait.tool",
+    "mcp_servers": "plugins.core_plugins.mcp_servers.tool",
 }
 
 _DISCOVERABLE_MAP = {
-    "workspace": "core.tools.workspace.tool",
     "document_search": "core.tools.document_search.tool",
     "read_file": "plugins.core_plugins.read_file.tool",
     "write_file": "plugins.core_plugins.write_file.tool",

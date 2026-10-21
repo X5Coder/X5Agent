@@ -13,8 +13,8 @@ Ownership:
     same rule as every other vector store).
   - When a Workspace file is deleted, its embeddings are deleted too:
     every search/ensure checks existence first, and purge_missing()
-    removes all orphans (called best-effort from workspace list,
-    server workspace APIs, and the context builder).
+    removes all orphans (called best-effort from the folder listing,
+    the server folder APIs and the context builder).
 
 Limits (bounded, never unbounded):
   - max file size 100MB, max 2000 chunks per file,
@@ -94,13 +94,13 @@ def normalize_file_id(file_id: Any) -> str:
     return s
 
 
-def _workspace_file(file_id: str) -> Path:
-    """Resolve a validated file_id strictly inside Workspace."""
+def _folder_file(file_id: str) -> Path:
+    """Resolve a validated file_id strictly inside the working folder."""
     import sys as _sys
     if str(_PROJECT) not in _sys.path:
         _sys.path.insert(0, str(_PROJECT))
-    from core.paths import resolve_inside_workspace
-    return resolve_inside_workspace(file_id)
+    from core.workfolder import resolve
+    return resolve(file_id)
 
 
 def _clean_id(file_id: Any) -> str:
@@ -301,7 +301,7 @@ def delete_file_embeddings(file_id: str) -> bool:
 
 
 def purge_missing() -> int:
-    """Delete embeddings whose Workspace file no longer exists. Never raises."""
+    """Delete embeddings whose working-folder file no longer exists."""
     try:
         entries = _all_file_entries()
         if not entries:
@@ -309,7 +309,7 @@ def purge_missing() -> int:
         gone = []
         for fid in entries:
             try:
-                if not _workspace_file(fid).is_file():
+                if not _folder_file(fid).is_file():
                     gone.append(fid)
             except Exception:
                 gone.append(fid)
@@ -325,17 +325,17 @@ def purge_missing() -> int:
 
 
 def ensure_indexed(file_id: str) -> dict:
-    """Convert + chunk + embed a Workspace file unless already indexed.
+    """Convert + chunk + embed a working-folder file unless already indexed.
 
-    If the Workspace file is gone, its embeddings are deleted and
+    If the file is gone, its embeddings are deleted and
     FileNotFoundError is raised. Re-indexes automatically when the file
     hash changed. Returns bounded metadata (never raw embeddings).
     """
     fid = normalize_file_id(file_id)
-    path = _workspace_file(fid)
+    path = _folder_file(fid)
     if not path.is_file():
         delete_file_embeddings(fid)
-        raise FileNotFoundError(f"Document not found in Workspace: {fid}")
+        raise FileNotFoundError(f"Document not found in the working folder: {fid}")
     blob = path.read_bytes()
     digest = hashlib.sha256(blob).hexdigest()
     entry = _file_entry(fid)
@@ -379,7 +379,7 @@ def _public_meta(fid: str, entry: dict) -> dict:
 
 
 def list_documents() -> list[dict]:
-    """Workspace supported files + index state. Bounded, never raises."""
+    """Working-folder supported files + index state. Bounded, never raises."""
     try:
         purge_missing()
     except Exception:
@@ -389,8 +389,8 @@ def list_documents() -> list[dict]:
         import sys as _sys
         if str(_PROJECT) not in _sys.path:
             _sys.path.insert(0, str(_PROJECT))
-        from core.paths import workspace_root
-        ws = workspace_root()
+        from core.workfolder import get_path
+        ws = get_path()
         if not ws.is_dir():
             return []
         found: list[str] = []

@@ -4,7 +4,7 @@ svg_maker - single SVG icon builder (DISCOVERABLE behind tool_search).
 Takes a plain description of the wanted image (+ optional icon_name/size),
 owns one internal single-shot session with svg_icon_system.md (simple
 24x24 icon basics only), and returns RAW SVG CODE ONLY plus the saved
-.svg file in Workspace.
+.svg file in the working folder.
 
 Bounds: description 1..2000 chars, size 16..512, SVG max 100KB,
 max 3 LLM attempts. No network, no browser, stdlib only.
@@ -212,12 +212,12 @@ def _run_icon(system: str, user: str, cancel_flag=None) -> str:
 
 
 def _save_svg(icon_name: str, svg: str) -> str:
-    """Save the icon into Workspace. Returns the Workspace-relative path."""
+    """Save the icon into the working folder. Returns the relative path."""
     _bootstrap()
-    from core.paths import resolve_inside_workspace
+    from core.workfolder import resolve as _resolve_folder
 
     rel = f"{icon_name}.svg"
-    target = resolve_inside_workspace(rel)
+    target = _resolve_folder(rel)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(svg, encoding="utf-8")
     return rel

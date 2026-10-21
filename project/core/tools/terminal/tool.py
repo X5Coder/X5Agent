@@ -1,20 +1,16 @@
-"""
-terminal tool - execute shell commands.
+"""terminal tool - execute shell commands with full access.
 
-Access scope (NO approval question in either scope — commands run immediately):
-- limited_access (DEFAULT): jailed inside X5Agent/Workspace only; any escape
-  attempt outside Workspace is blocked.
-- full_access: any command on the whole machine runs normally.
+The terminal is not jailed: any command runs immediately on the machine and
+any existing folder can be used as the working directory. The default working
+directory is the agent's current working folder (see core/workfolder.py).
 
-Scope file: X5Agent/Data/database/terminal_access.json = {"scope": ...}.
-Set from the Agent permission menu (Restricted/Limited vs Full access).
+Safety is prompt-level by design: the model is told to keep test artifacts in
+the system temp folder and to ask the user (question tool) before destructive
+commands such as deleting files. The engine never asks per command.
 """
 from __future__ import annotations
 
-import json
 import os
-import re
-import shlex
 import shutil
 import subprocess
 import tempfile
@@ -29,32 +25,8 @@ from core.agent_guard import points as _x5_guard_points
 # ************************* 188540
 _x5_guard_points.local_guard(__name__)
 
-MAX_COMMAND_LEN = 2000
 DEFAULT_TIMEOUT = 30
 MAX_TIMEOUT = 120
-
-LIMITED = "limited_access"
-FULL = "full_access"
-
-
-def _access_scope() -> str:
-    """Current terminal scope: full_access or limited_access (default).
-
-    Reads X5Agent/Data/database/terminal_access.json; anything missing or
-    invalid falls back to limited_access. Never raises.
-    """
-    try:
-        import sys as _sys
-        proj = Path(__file__).resolve().parents[3]
-        if str(proj) not in _sys.path:
-            _sys.path.insert(0, str(proj))
-        from core.paths import data_db_file as _ddf
-        raw = json.loads(_ddf("terminal_access.json").read_text(encoding="utf-8"))
-        if isinstance(raw, dict) and raw.get("scope") == FULL:
-            return FULL
-    except Exception:
-        pass
-    return LIMITED
 
 
 def _kill_tree(pid: int) -> None:
@@ -87,28 +59,28 @@ def _read_bounded(path: Path) -> str:
     return text
 
 
-def _workspace_root() -> Path:
-    # Try shared resolver, fallback to local parents computation (never breaks imports).
+def _working_folder() -> Path:
+    """The agent's current working folder (default cwd). Never raises."""
     try:
         import sys as _sys
         proj = Path(__file__).resolve().parents[3]
         if str(proj) not in _sys.path:
             _sys.path.insert(0, str(proj))
-        from core.paths import workspace_root as _ws
-        ws = _ws()
+        from core.workfolder import get_path
+        folder = get_path()
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws.resolve()
+        return folder.resolve()
     except Exception:
         repo = Path(__file__).resolve().parents[4]
-        ws = repo / "X5Agent" / "Workspace"
+        folder = repo / "X5Agent" / "Data" / "default_folder"
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws.resolve()
+        return folder.resolve()
 
 
 def _validate_command(v) -> str:
@@ -117,77 +89,21 @@ def _validate_command(v) -> str:
     s = v.strip()
     if not s:
         raise ValueError("command must be non-empty")
-    if len(s) > MAX_COMMAND_LEN:
-        raise ValueError(f"command too long (max {MAX_COMMAND_LEN})")
-    if _access_scope() == FULL:
-        return s  # full access: any command on the whole machine, no question
-    # limited_access (default) jail: block any escape attempt outside Workspace.
-    low = s.lower()
-    ws_str = str(_workspace_root()).lower()
-    if ".." in s:
-        raise ValueError("Blocked: outside Workspace (.. not allowed). Workspace only.")
-    # Block absolute paths that are not inside Workspace (Windows drive or unix root).
-    # Find drive-letter absolutes like C:\ or C:/ in the command.
-    for m in re.finditer(r"[A-Za-z]:[\\/]", s):
-        # allow only if the Workspace path itself appears in the command
-        if ws_str not in low:
-            raise ValueError("Blocked: absolute path outside Workspace. Workspace only.")
-            break
-    # Block UNC network paths (\\server\share) - never inside Workspace.
-    if re.search(r"(^|[\s;&|\"'])\\\\[A-Za-z0-9]", s):
-        raise ValueError("Blocked: network path outside Workspace. Workspace only.")
-    # Block unix-style absolutes outside Workspace (/etc, /home, ...).
-    # The Workspace itself never lives under these roots, so any match is an escape.
-    if re.search(r"(^|[\s;&|\"'/])-?/(etc|bin|usr|home|root|tmp|var|opt|windows|users|programdata)\b", low):
-        raise ValueError("Blocked: absolute path outside Workspace. Workspace only.")
-    # Block home-dir (~) and env/shell expansion ($VAR, ${VAR}, %VAR%, backticks, $(...)).
-    # shell=True would expand these outside the jail, so they are forbidden.
-    if re.search(r"(^|[\s;&|\"'=])~([\\/]|$|\s)", s):
-        raise ValueError("Blocked: home-dir expansion outside Workspace. Workspace only.")
-    if ("$" in s or "`" in s or re.search(r"%[A-Za-z_]+%", s)):
-        raise ValueError("Blocked: env/shell expansion not allowed. Use plain Workspace-relative paths.")
-    # Block obvious escape cd commands without Workspace context.
-    escape_cmds = ["cd /", "cd \\", "cd..", "cd ..", "chdir ..", "pushd ..", "popd"]
-    for ec in escape_cmds:
-        if ec in low and ws_str not in low:
-            raise ValueError("Blocked: outside Workspace (cd escape). Workspace only.")
     return s
 
 
-def _validate_workdir(v) -> Path | None:
-    ws = _workspace_root()
-    if _access_scope() == FULL:
-        # full access: any folder on the machine (default cwd = Workspace).
-        if v is None:
-            return ws
-        if not isinstance(v, str):
-            raise TypeError("workdir must be string")
-        s = v.strip()
-        if not s:
-            return ws
-        p = Path(s)
-        p = p.resolve() if p.is_absolute() else (ws / s).resolve()
-        if not p.exists() or not p.is_dir():
-            raise FileNotFoundError(f"workdir not found: {p}")
-        return p
+def _validate_workdir(v) -> Path:
+    """Resolve the working directory: any existing folder is allowed."""
+    root = _working_folder()
     if v is None:
-        return ws
+        return root
     if not isinstance(v, str):
         raise TypeError("workdir must be string")
     s = v.strip()
     if not s:
-        return ws
-    p = Path(s)
-    # If relative, resolve against Workspace (model device), NOT project root.
-    if not p.is_absolute():
-        p = (ws / s).resolve()
-    else:
-        p = p.resolve()
-    # Must be inside Workspace or be Workspace itself - nothing else.
-    try:
-        p.relative_to(ws)
-    except ValueError:
-        raise ValueError(f"Blocked: workdir must be inside Workspace: {ws}") from None
+        return root
+    p = Path(s).expanduser()
+    p = p.resolve() if p.is_absolute() else (root / s).resolve()
     if not p.exists() or not p.is_dir():
         raise FileNotFoundError(f"workdir not found: {p}")
     return p
@@ -224,8 +140,7 @@ def execute(command: str, workdir: str | None = None, timeout: int | None = None
     to = _validate_timeout(timeout)
     event = format_event(command=cmd)
 
-    ws = _workspace_root()
-    cwd = str(wd) if wd else str(ws)
+    cwd = str(wd)
 
     # Output goes to FILES, never pipes. A long-running/server command detaches
     # a grandchild that inherits the stdout handle; with pipes that handle stays

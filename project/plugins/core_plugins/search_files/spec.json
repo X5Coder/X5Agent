@@ -1,6 +1,6 @@
 {
   "name": "search_files",
-  "description": "A workspace file locator tool that searches INSIDE X5Agent/Workspace only (any path outside is BLOCKED) for file paths matching glob patterns or content queries. Use whenever you need to locate workspace files, examine workspace layouts, or find code references across workspace folders. Use this to pinpoint exact target paths before reading or editing files.",
+  "description": "A file locator tool that searches inside the working folder (the folder the user selected; any path outside is BLOCKED) for file paths matching glob patterns or content queries. Use whenever you need to locate files, examine the folder layout, or find code references. Use this to pinpoint exact target paths before reading or editing files.",
   "inputs": {
     "pattern": {"type": "string", "required": true, "description": "File pattern, e.g. **/*.py."},
     "query": {"type": "string", "required": false, "description": "Text to search for inside matched files."},

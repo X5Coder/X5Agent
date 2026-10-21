@@ -286,17 +286,6 @@
     <section class="plans" id="plans" hidden></section>
 
     <div class="error" id="err"></div>
-
-    <!-- the license session was lost (wiped state / another device): sign in -->
-    <section class="panel" id="authPanel" hidden>
-      <h3>Sign in to your license account</h3>
-      <p>The plan is stored on your license account. Sign in again to continue.</p>
-      <form id="authForm" style="margin-top:16px">
-        <div class="field"><input id="authEmail" type="email" autocomplete="username" placeholder="you@gmail.com" required></div>
-        <div class="field"><input id="authPw" type="password" autocomplete="current-password" placeholder="Password" required></div>
-        <div class="row"><button type="submit" id="authGo">Sign in</button></div>
-      </form>
-    </section>
   </main>
 
 <script>
@@ -308,7 +297,6 @@
   var errBox = $("err");
   var plansBox = $("plans");
   var loadingBox = $("plansLoading");
-  var authPanel = $("authPanel");
 
   function fail(msg) {
     errBox.textContent = msg || "Something went wrong.";
@@ -517,15 +505,31 @@
       }
       var d = x.data;
       var license = d.license || {};
-      // A lost license session keeps the page (it shows the sign-in form);
-      // only a stored choice sends the owner on to the console.
+      // This page only shows plans. License credentials live on the sign-in
+      // page, so a lost session goes there instead of a dead end. ONE bounce
+      // per tab (a server-side redirect can strip the query), then the reason
+      // is shown: a signed-in console that cannot restore its license session
+      // must never reload this page in a loop.
       if (!license.connected) {
         loadingBox.hidden = true;
         plansBox.hidden = true;
-        authPanel.hidden = false;
-        $("authEmail").value = d.email || "";
+        var bounced = false;
+        try { bounced = sessionStorage.getItem("x5_plans_bounced") === "1"; } catch (_) {}
+        if (!bounced && !/[?&]relogin=1/.test(location.search)) {
+          try { sessionStorage.setItem("x5_plans_bounced", "1"); } catch (_) {}
+          location.replace("/login.html?relogin=1&next=" + encodeURIComponent("/plans.html"));
+          return;
+        }
+        var why = "";
+        try { why = sessionStorage.getItem("x5_license_err") || ""; } catch (_) {}
+        if (why) {
+          try { sessionStorage.removeItem("x5_license_err"); } catch (_) {}
+        }
+        fail("Your license session ended. Sign in again to continue." + (why ? " " + why : ""));
         return;
       }
+      try { sessionStorage.removeItem("x5_plans_bounced"); } catch (_) {}
+      try { sessionStorage.removeItem("x5_license_err"); } catch (_) {}
       if (!d.needs_onboarding) { openAgent(); return; }
       renderPlans(d.plans || []);
     }).catch(function () {
@@ -533,30 +537,6 @@
       fail("Could not reach the server.");
     });
   }
-
-  $("authForm").addEventListener("submit", function (e) {
-    e.preventDefault();
-    clearFail();
-    var em = $("authEmail").value.trim();
-    var pw = $("authPw").value;
-    if (!em || !pw) { fail("Enter your email and password."); return; }
-    var btn = $("authGo");
-    btn.disabled = true;
-    fetch("/api/license/login", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: em, password: pw })
-    }).then(readJson).then(function (x) {
-      if (x.status === 200 && x.data && x.data.ok) {
-        location.reload();
-        return;
-      }
-      fail((x.data && x.data.error) || "Sign-in failed.");
-      btn.disabled = false;
-    }).catch(function () {
-      fail("Could not reach the server.");
-      btn.disabled = false;
-    });
-  });
 
   load();
 })();

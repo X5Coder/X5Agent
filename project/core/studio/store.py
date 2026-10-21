@@ -1013,7 +1013,7 @@ def purge_studios() -> dict:
     """Delete EVERY studio + its branch session (explicit-only helper).
 
     Removes Data/studios/pdf_* dirs and Data/database/studio_sessions/*.json.
-    Memories, Workspace, and all other Data are never touched. Never raises.
+    Memories, the working folder and all other Data are never touched. Never raises.
     NOTE: nothing calls this in normal operation — studios are never deleted:
     not by chat regenerate/edit/prune, not by Delete-chat-history. Kept only
     as an explicit helper (plus its test).

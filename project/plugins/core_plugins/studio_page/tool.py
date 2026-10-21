@@ -11,7 +11,7 @@ http_request). Read/edit/test work ONLY on the tasked slide's file
   (old must occur exactly once; read first so it matches).
 - test: trial-build check of the tasked slide (stored code, or the
   given code without writing) — same gate the writes use.
-- fetch: save ONE image/font into the studio assets NOW — either a Workspace
+- fetch: save ONE image/font into the studio assets NOW — either a working-folder
   file (file = image_search result path, e.g. images/cat_1.jpg) or a web
   file (url + your search words as query) — returns its asset src for
   the code. Leftover hotlinks in delivered code are auto-saved the same
@@ -241,14 +241,14 @@ def execute(studio_id: str = "", action: str = "list", page_no: int = 0,
     if act == "fetch":
         # Save ONE image/font into the assets now (the search words ride
         # along as the asset's remembered description). Two inputs:
-        # file = Workspace file from image_search (copied, no download),
+        # file = working-folder file from image_search (copied, no download),
         # url = web image/font (downloaded). Returns the src path
         # to use verbatim in code (<img src> / @font-face).
         words = query if isinstance(query, str) else ""
         try:
             from core.studio import assetfetch as _fetch
             if isinstance(file, str) and file.strip():
-                got = _fetch.save_workspace_file(sid, file, words)
+                got = _fetch.save_folder_file(sid, file, words)
             else:
                 target = url if isinstance(url, str) and url.strip() else (
                     code if isinstance(code, str) else "")

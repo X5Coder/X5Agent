@@ -1,6 +1,6 @@
 {
   "name": "write_file",
-  "description": "A filesystem modification tool that creates new files or replaces existing file contents INSIDE X5Agent/Workspace only (any path outside is BLOCKED, but anything inside is open). Use whenever you need to write code, save generated reports, update configs, or store structured data on disk. Use this to implement concrete changes and persist verified outputs in the workspace.",
+  "description": "A filesystem modification tool that creates new files or replaces existing file contents inside the working folder (the folder the user selected; any path outside is BLOCKED, anything inside is open). Use whenever you need to write code, save generated reports, update configs, or store structured data on disk. Use this to implement concrete changes and persist verified outputs in that folder.",
   "inputs": {
     "path": {"type": "string", "required": true, "description": "File path."},
     "content": {"type": "string", "required": true, "description": "Content to write."}

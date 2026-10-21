@@ -67,7 +67,6 @@ def forbidden_roots(project_dir: str | os.PathLike[str] | None = None) -> tuple[
     repo = project.parent
     return (
         repo / "X5Agent" / "Data",
-        repo / "X5Agent" / "Workspace",
         project / "skills",
         project / "models",
         project / "embedding_model",

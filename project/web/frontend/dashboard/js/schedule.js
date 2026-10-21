@@ -2090,7 +2090,6 @@ async function schedRunTurn(jobId, userText, atts, opts) {
       action: "chat",
       message: userText,
       attachments: atts || [],
-      mode: runMode,
     };
     if (skipIds && skipIds.length) body.skip_history_ids = skipIds;
     const res = await fetch("/api/scheduler", {
@@ -2153,7 +2152,7 @@ async function schedRunTurn(jobId, userText, atts, opts) {
 
 function updateSchedVisibility() {
   // The scheduler tab + list live in the Agent section only (agent page and
-  // its full run sessions — never dashboard/workspace/models/...). The
+  // its full run sessions — never dashboard/folder/models/...). The
   // browser edge template shares the same gate via body.browser-visible.
   let on = false;
   try {
@@ -2350,7 +2349,6 @@ async function fetchInitial() {
   } catch (_) {}
 }
 
-let runMode = "restricted"; // permission mode of the run-page composer
 let runPending = []; // [{type, name, dataUrl}] max 2, cleared after each send
 let runRecorder = null;
 let runRecChunks = [];
@@ -2413,7 +2411,6 @@ function bindRunFormOnce() {
   const attachMenu = document.getElementById("schedRunAttachMenu");
   attachBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
-    document.getElementById("schedRunModeMenu")?.classList.remove("open");
     attachMenu?.classList.toggle("open");
   });
   document.addEventListener("click", (e) => {
@@ -2421,10 +2418,6 @@ function bindRunFormOnce() {
       if (attachMenu?.classList.contains("open")
         && !attachMenu.contains(e.target) && e.target !== attachBtn
         && !attachBtn?.contains(e.target)) attachMenu.classList.remove("open");
-      const mm = document.getElementById("schedRunModeMenu");
-      const mb = document.getElementById("schedRunModeBtn");
-      if (mm?.classList.contains("open") && !mm.contains(e.target)
-        && !mb?.contains(e.target)) mm.classList.remove("open");
     } catch (_) {}
   });
   const pickers = {
@@ -2464,49 +2457,6 @@ function bindRunFormOnce() {
       }
       renderRunChips();
     });
-  });
-
-  // Mode pill (same template: Restricted / Free).
-  const modeBtn = document.getElementById("schedRunModeBtn");
-  const modeMenu = document.getElementById("schedRunModeMenu");
-  const modeLabel = document.getElementById("schedRunModeLabel");
-  const paintMode = () => {
-    if (modeLabel) modeLabel.textContent = runMode === "free" ? "Full access" : "Restricted";
-    modeMenu?.querySelectorAll("button").forEach((b) => {
-      b.classList.toggle("active", b.dataset.mode === runMode);
-    });
-  };
-  if (modeMenu) {
-    const ICONS = {
-      restricted: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 19 6v5.2c0 4.2-2.9 7.3-7 9.2-4.1-1.9-7-5-7-9.2V6l7-2.5Z"/><path d="m8.8 12 2 2 4.4-4.6"/></svg>`,
-      free: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2.8 4.8 13.2h5.4L9 21.2l8.2-10.4h-5.4L13 2.8Z"/></svg>`,
-    };
-    modeMenu.innerHTML = `<div class="mode-head">Agent permission</div>`;
-    [
-      { val: "restricted", title: "Restricted", desc: "Ask before any terminal command (default)" },
-      { val: "free", title: "Full access", desc: "Terminal runs without asking" },
-    ].forEach((opt) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.dataset.mode = opt.val;
-      b.className = "mode-opt";
-      b.innerHTML = `<span class="mode-opt-icon" aria-hidden="true">${ICONS[opt.val]}</span>`
-        + `<span><b></b><span class="desc"></span></span><span class="radio" aria-hidden="true"></span>`;
-      b.querySelector("b").textContent = opt.title;
-      b.querySelector(".desc").textContent = opt.desc;
-      b.addEventListener("click", () => {
-        runMode = b.dataset.mode === "free" ? "free" : "restricted";
-        paintMode();
-        modeMenu.classList.remove("open");
-      });
-      modeMenu.appendChild(b);
-    });
-  }
-  paintMode();
-  modeBtn?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    attachMenu?.classList.remove("open");
-    modeMenu?.classList.toggle("open");
   });
 
   // Mic: record → /api/stt → insert transcript (same backend as main chat).

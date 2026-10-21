@@ -40,16 +40,9 @@ let composerAttachBox = null;
 let pendingAttachments = [];
 let mentionMenu = null;
 let pendingSkill = null; // {name, instructions} — picked via "/" menu, injected on send
-let pendingWsRefs = []; // [{path, name}] — picked via "@" menu, sent as metadata
+let pendingFolderRefs = []; // [{path, name}] — picked via "@" menu, sent as metadata
 let skillsCache = null; // {at, list} — short-lived GET /api/skills cache
 
-const MODE_KEY = "x5-agent-mode";
-let agentMode = "restricted";
-try {
-  agentMode = localStorage.getItem(MODE_KEY) === "free" ? "free" : "restricted";
-} catch (_) {
-  agentMode = "restricted";
-}
 let pendingQuestion = null;
 // Unanswered agent question (ask/approval/needs_model) persisted across page
 // refresh: the server keeps the same question id blocked (up to its timeout),
@@ -654,9 +647,9 @@ function appendFinalVoice(el, audioList) {
 }
 
 function fileDownloadUrl(rel, preview) {
-  // Workspace file URL (server-validated). preview=1 renders inline.
+  // Working-folder file URL (server-validated). preview=1 renders inline.
   try {
-    return "/api/workspace/download?path=" + encodeURIComponent(String(rel || "")) + (preview ? "&preview=1" : "");
+    return "/api/folder/download?path=" + encodeURIComponent(String(rel || "")) + (preview ? "&preview=1" : "");
   } catch (_) {
     return "";
   }
@@ -750,7 +743,7 @@ function createFileCard(file) {
 }
 
 function appendFinalFiles(el, files) {
-  // Workspace files produced this turn (studio pages): a designed file
+  // Working-folder files produced this turn (studio pages): a designed file
   // card under the reply — click opens the preview, with per-image and
   // whole-file downloads. Live and after refresh. Never throws.
   try {
@@ -941,20 +934,17 @@ function formatRich(text) {
   return html;
 }
 
-/* ---------- clickable Workspace file links in assistant replies ----------
-   Explicit format ONLY: [label](workspace:folder/file.ext) — nothing else
+/* ---------- clickable working-folder file links in assistant replies ----------
+   Explicit format ONLY: [label](folder:path/file.ext) — nothing else
    becomes a link. Plain sentences (even with a slash) stay plain text and
-   never jump to Workspace. The button shows the label and opens the file
-   exactly at its path (same reveal flow as @file tokens). */
-function normalizeWsPath(raw) {
-  // Validated Workspace-relative path or null. Never throws.
+   never jump to the folder page. The button shows the label and opens the
+   file exactly at its path (same reveal flow as @file tokens). */
+function normalizeFolderPath(raw) {
+  // Validated folder-relative path or null. Never throws.
   try {
     let rel = String(raw || "").replace(/\\/g, "/").trim();
     if (!rel) return null;
     rel = rel.replace(/^\/+/, "");
-    // The map shows absolute paths — keep only what follows Workspace/.
-    const wx = rel.search(/X5Agent\/Workspace\//i);
-    if (wx >= 0) rel = rel.slice(wx + "X5Agent/Workspace/".length);
     rel = rel.replace(/^\/+/, "");
     if (!rel || rel.length > 500) return null;
     const parts = rel.split("/").filter(Boolean);
@@ -971,8 +961,8 @@ function normalizeWsPath(raw) {
   }
 }
 
-function linkifyWorkspacePaths(root) {
-  // Explicit [label](workspace:path) only — no auto-linking of plain text.
+function linkifyFolderPaths(root) {
+  // Explicit [label](folder:path) only — no auto-linking of plain text.
   // Text nodes only — code blocks, links and buttons untouched.
   try {
     if (!root || !root.querySelectorAll) return;
@@ -982,7 +972,7 @@ function linkifyWorkspacePaths(root) {
           const pe = node.parentElement;
           if (pe && pe.closest && pe.closest("pre,code,a,button,.codeblock,.ws-path-link")) return NodeFilter.FILTER_REJECT;
           const v = node.nodeValue || "";
-          if (!/workspace:/i.test(v)) return NodeFilter.FILTER_REJECT;
+          if (!/folder:/i.test(v)) return NodeFilter.FILTER_REJECT;
         } catch (_) {
           return NodeFilter.FILTER_REJECT;
         }
@@ -991,20 +981,20 @@ function linkifyWorkspacePaths(root) {
     });
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);
-    const WS_LINK_RE = /\[([^\]\n]{1,120})\]\(workspace:([^)]{1,500})\)/gi;
+    const FOLDER_LINK_RE = /\[([^\]\n]{1,120})\]\(folder:([^)]{1,500})\)/gi;
     nodes.forEach((node) => {
       try {
         const text = node.nodeValue || "";
-        WS_LINK_RE.lastIndex = 0;
+        FOLDER_LINK_RE.lastIndex = 0;
         let m;
         let last = 0;
         let hit = false;
         const frag = document.createDocumentFragment();
-        while ((m = WS_LINK_RE.exec(text)) !== null) {
+        while ((m = FOLDER_LINK_RE.exec(text)) !== null) {
           const label = (m[1] || "").trim();
           const rawPath = (m[2] || "").trim();
           if (!label || !rawPath) continue;
-          const norm = normalizeWsPath(rawPath);
+          const norm = normalizeFolderPath(rawPath);
           if (!norm) continue;
           const start = m.index;
           const end = m.index + m[0].length;
@@ -1014,7 +1004,7 @@ function linkifyWorkspacePaths(root) {
           btn.className = "ws-path-link";
           btn.setAttribute("data-ws-path", norm);
           btn.setAttribute("dir", "auto");
-          btn.title = "Open in Workspace";
+          btn.title = "Open in the working folder";
           btn.textContent = label;
           frag.appendChild(btn);
           last = end;
@@ -1605,7 +1595,7 @@ function typeRich(container, fullText) {
     const template = document.createElement("div");
     template.innerHTML = formatRich(fullText);
     try {
-      linkifyWorkspacePaths(template);
+      linkifyFolderPaths(template);
     } catch (_) {}
     const live = template.cloneNode(true);
     const jobs = [];
@@ -2000,7 +1990,7 @@ function buildHistoryNode(m) {
     const rich = document.createElement("div");
     rich.innerHTML = formatRich(rawText);
     try {
-      linkifyWorkspacePaths(rich);
+      linkifyFolderPaths(rich);
     } catch (_) {}
     p.replaceWith(rich);
     appendFinalImages(el, m.images);
@@ -2172,7 +2162,7 @@ function renderHistoryMessages(msgs) {
         const rich = document.createElement("div");
         rich.innerHTML = formatRich(rawText);
         try {
-          linkifyWorkspacePaths(rich);
+          linkifyFolderPaths(rich);
         } catch (_) {}
         p.replaceWith(rich);
         appendFinalImages(el, m.images);
@@ -2247,7 +2237,7 @@ function finalShotUrl(shot) {
 
 function finalImageUrl(item) {
   // Unified resolver: {shot} -> /api/shot, {image} -> /api/image,
-  // {workspace} -> /api/workspace/download (Workspace pictures, inline),
+  // {folder} -> /api/folder/download (working-folder pictures, inline),
   // bare strings auto-detected by extension. Never throws.
   try {
     if (typeof item === "string") {
@@ -2256,9 +2246,9 @@ function finalImageUrl(item) {
       return { url: finalShotUrl(s), label: "Screenshot" };
     }
     if (item && typeof item.image === "string" && item.image) return { url: "/api/image?path=" + encodeURIComponent(item.image), label: "Generated image" };
-    if (item && typeof item.workspace === "string" && item.workspace) {
-      const w = item.workspace;
-      if (w.length <= 200 && !w.includes("..") && !w.includes("\\") && /\.(png|jpe?g|webp|gif)$/i.test(w)) return { url: "/api/workspace/download?path=" + encodeURIComponent(w) + "&preview=1", label: "Image" };
+    if (item && typeof item.folder === "string" && item.folder) {
+      const w = item.folder;
+      if (w.length <= 200 && !w.includes("..") && !w.includes("\\") && /\.(png|jpe?g|webp|gif)$/i.test(w)) return { url: "/api/folder/download?path=" + encodeURIComponent(w) + "&preview=1", label: "Image" };
       return null;
     }
     if (item && typeof item.shot === "string" && item.shot) return { url: finalShotUrl(item.shot), label: "Screenshot" };
@@ -2420,10 +2410,10 @@ async function sendStream(value, attachments, thinking, skipHistoryIds, isResume
   const ctl = new AbortController();
   activeRun = { cancelled: false, gen: myGen, thinking, abort: () => { try { ctl.abort(); } catch (_) {} } };
   let res;
-  const streamBody = { message: isResume ? "" : value, attachments, mode: agentMode };
+  const streamBody = { message: isResume ? "" : value, attachments };
   if (isResume) streamBody.resume = true;
   if (pendingSkill) streamBody.skill = pendingSkill;
-  if (pendingWsRefs.length) streamBody.workspace_refs = pendingWsRefs.map((r) => ({ name: r.name, path: r.path }));
+  if (pendingFolderRefs.length) streamBody.folder_refs = pendingFolderRefs.map((r) => ({ name: r.name, path: r.path }));
   if (skipHistoryIds && skipHistoryIds.length) streamBody.skip_history_ids = skipHistoryIds;
   try {
     res = await fetch("/api/chat_stream", {
@@ -2560,7 +2550,7 @@ async function sendStream(value, attachments, thinking, skipHistoryIds, isResume
       if (livePartsRaw && !/[\s]$/.test(livePartsRaw) && !/^\s/.test(text)) livePartsRaw += "\n\n";
       livePartsRaw += text;
       livePartsEl.innerHTML = formatRich(livePartsRaw);
-      try { linkifyWorkspacePaths(livePartsEl); } catch (_) {}
+      try { linkifyFolderPaths(livePartsEl); } catch (_) {}
       scrollToBottom();
     } catch (_) {}
   }
@@ -2816,7 +2806,7 @@ async function sendStream(value, attachments, thinking, skipHistoryIds, isResume
               holder = livePartsEl;
               try {
                 holder.innerHTML = formatRich(replyText);
-                try { linkifyWorkspacePaths(holder); } catch (_) {}
+                try { linkifyFolderPaths(holder); } catch (_) {}
               } catch (_) {
                 await typeRich(holder, replyText);
               }
@@ -2994,10 +2984,10 @@ function setSending(sending) {
 
 async function sendBlocking(value, attachments, thinking, skipHistoryIds, isResume) {
   try {
-    const blockBody = { message: isResume ? "" : value, attachments, mode: agentMode };
+    const blockBody = { message: isResume ? "" : value, attachments };
     if (isResume) blockBody.resume = true;
     if (pendingSkill) blockBody.skill = pendingSkill;
-    if (pendingWsRefs.length) blockBody.workspace_refs = pendingWsRefs.map((r) => ({ name: r.name, path: r.path }));
+    if (pendingFolderRefs.length) blockBody.folder_refs = pendingFolderRefs.map((r) => ({ name: r.name, path: r.path }));
     if (skipHistoryIds && skipHistoryIds.length) blockBody.skip_history_ids = skipHistoryIds;
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -3075,8 +3065,8 @@ async function handleSend() {
   const pending = pendingAttachments.slice();
   // Picks count only while their "@name" / "/name" token is still in the text.
   if (pendingSkill && !hasToken(value, "/", pendingSkill.name)) pendingSkill = null;
-  pendingWsRefs = pendingWsRefs.filter((r) => hasToken(value, "@", r.name));
-  if (!value && !pending.length && !pendingSkill && !pendingWsRefs.length) return;
+  pendingFolderRefs = pendingFolderRefs.filter((r) => hasToken(value, "@", r.name));
+  if (!value && !pending.length && !pendingSkill && !pendingFolderRefs.length) return;
   if (isUploadingFiles()) {
     toast("Waiting for files to finish uploading…");
     return;
@@ -3135,7 +3125,7 @@ async function handleSend() {
   await executeAgentTurn(value, attachments);
   // Picks are one-shot: a new turn starts clean.
   pendingSkill = null;
-  pendingWsRefs = [];
+  pendingFolderRefs = [];
 }
 
 async function resolveStoppedUserId() {
@@ -3201,7 +3191,7 @@ async function handleContinue() {
     }
     if (editingTarget || pendingQuestion) return;
     if ((composerInput.value || "").trim()) return;
-    if (pendingAttachments.length || pendingSkill || pendingWsRefs.length) return;
+    if (pendingAttachments.length || pendingSkill || pendingFolderRefs.length) return;
     hideMentionMenu();
     // Adopt the stopped Working block so the continuation lands in the SAME
     // block and step list: unstarted steps start there, an unfinished step
@@ -3441,7 +3431,7 @@ function isContinueMode() {
     // push (no local stream) — never shows Continue under it.
     if (activeRun || catchupResume || resumePending) return false;
     if (editingTarget || pendingQuestion) return false;
-    if (pendingAttachments.length || pendingSkill || pendingWsRefs.length) return false;
+    if (pendingAttachments.length || pendingSkill || pendingFolderRefs.length) return false;
     if (isUploadingFiles() || hasFailedFiles()) return false;
     if ((composerInput.value || "").trim()) return false;
     return !!readStoppedUserId();
@@ -3490,7 +3480,7 @@ function updateSendEnabled() {
   let idleEmpty = false;
   try {
     idleEmpty = !(composerInput.value || "").trim()
-      && !pendingAttachments.length && !pendingSkill && !pendingWsRefs.length
+      && !pendingAttachments.length && !pendingSkill && !pendingFolderRefs.length
       && !pendingQuestion && !editingTarget;
   } catch (_) { idleEmpty = false; }
   sendBtn.disabled = blocked || idleEmpty;
@@ -3750,7 +3740,7 @@ function isChatImageName(name) {
 }
 function isSafePreviewSrc(src) {
   const s = String(src || "");
-  return s.startsWith("blob:") || s.startsWith("data:image") || s.startsWith("/api/workspace/download?path=");
+  return s.startsWith("blob:") || s.startsWith("data:image") || s.startsWith("/api/folder/download?path=");
 }
 function openImageLightbox(src, name) {
   if (!isSafePreviewSrc(src)) return;
@@ -3838,8 +3828,6 @@ function initAttachments() {
 
   attachBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    // Only one composer menu at a time — opening this one closes the mode menu.
-    document.getElementById("modeMenu")?.classList.remove("open");
     const open = attachMenu.classList.toggle("open");
     attachBtn.classList.toggle("active", open);
   });
@@ -4311,13 +4299,13 @@ function initUserMessageGestures() {
   chatScroll?.addEventListener("scroll", hideAllUserBars, { passive: true });
 }
 
-/* ---------- @ / pickers: uploads + Workspace files, "/" skills ---------- */
+/* ---------- @ / pickers: uploads + working-folder files, "/" skills ---------- */
 function hideMentionMenu() {
   if (mentionMenu) {
     mentionMenu.remove();
     mentionMenu = null;
   }
-  wsPickerSeq++;
+  folderPickerSeq++;
   closePathbar(true);
 }
 
@@ -4375,8 +4363,8 @@ function replaceTriggerToken(text) {
 }
 
 /* Pathbar picker state (breadcrumb bar attached above the composer). */
-let wsPickerDir = "";
-let wsPickerSeq = 0;
+let folderPickerDir = "";
+let folderPickerSeq = 0;
 
 /* Composer highlight: ACTIVE @file / /skill tokens paint blue in a backdrop
    layer under the transparent-text textarea (same proven pattern as the
@@ -4403,7 +4391,7 @@ function hlTokenRanges(text) {
       }
     } catch (_) {}
   };
-  pendingWsRefs.forEach((r) => push("@", r.name, "ws", r.path));
+  pendingFolderRefs.forEach((r) => push("@", r.name, "ws", r.path));
   if (pendingSkill) push("/", pendingSkill.name, "skill", pendingSkill.name);
   pendingAttachments.forEach((a, i) => {
     if (a && a.type === "image") push("@", imageLabelFor(i), "img", null);
@@ -4430,15 +4418,15 @@ function tokenAtCaret() {
   }
 }
 
-function revealWorkspaceFile(path) {
-  // Jump to the Workspace page with that file revealed exactly at its path.
+function revealFolderFile(path) {
+  // Jump to the Working Folder page with that file revealed exactly at its path.
   try {
     const rel = String(path || "").replace(/\\/g, "/").replace(/^\/+/, "").slice(0, 500);
     if (!rel || rel.split("/").includes("..")) return;
     const parts = rel.split("/").filter(Boolean);
     const name = parts.pop() || "";
-    window.dispatchEvent(new CustomEvent("x5:reveal-workspace", { detail: { dir: parts.join("/"), name } }));
-    navigate("workspace");
+    window.dispatchEvent(new CustomEvent("x5:reveal-folder", { detail: { dir: parts.join("/"), name } }));
+    navigate("folder");
   } catch (_) {}
 }
 
@@ -4517,14 +4505,14 @@ function initComposerHL() {
     wrap.insertBefore(bd, composerInput);
     composerHL = bd;
     ["input", "click", "keyup", "select"].forEach((ev) => composerInput.addEventListener(ev, renderComposerHL));
-    // Clicking a BLUE token jumps to its home (file -> Workspace at its
+    // Clicking a BLUE token jumps to its home (file -> folder at its
     // path, skill -> Skills detail). Edges/drag-select stay for editing.
     composerInput.addEventListener("click", () => {
       try {
         setTimeout(() => {
           const hit = tokenAtCaret();
           if (!hit || hit.kind === "img" || !hit.key) return;
-          if (hit.kind === "ws") revealWorkspaceFile(hit.key);
+          if (hit.kind === "ws") revealFolderFile(hit.key);
           else if (hit.kind === "skill") revealSkill(hit.key);
         }, 0);
       } catch (_) {}
@@ -4599,7 +4587,7 @@ function wsRow(svg, name, meta, onClick, iconCls, thumbUrl) {
   b.className = "pk-row";
   // Image files show the picture itself instead of the default icon.
   // thumbUrl is either a blob:/data: URL (attached uploads) or the jailed
-  // /api/workspace/download?path= URL (Workspace files) — both validated.
+  // /api/folder/download?path= URL (working-folder files) — both validated.
   if (thumbUrl && isSafePreviewSrc(thumbUrl)) {
     const im = document.createElement("img");
     im.className = "pk-thumb-img";
@@ -4647,8 +4635,8 @@ function wsSection(title) {
 function wsNav(rel) {
   // Enter a folder (or climb via breadcrumb): navigation only, writes
   // nothing into the composer. Only picking a FILE inserts "@name".
-  wsPickerDir = rel || "";
-  showMentionMenu(wsPickerDir ? `${wsPickerDir}/` : "");
+  folderPickerDir = rel || "";
+  showMentionMenu(folderPickerDir ? `${folderPickerDir}/` : "");
   if (composerInput) {
     try {
       composerInput.focus({ preventScroll: true });
@@ -4674,15 +4662,15 @@ function hasToken(value, prefix, name) {
   }
 }
 
-/* Workspace/skill picks stashed per user bubble so resends (regenerate /
+/* Working-folder/skill picks stashed per user bubble so resends (regenerate /
    edit-resend) inject the SAME @ ids + / skill as the original turn.
-   Uploaded files were mirrored into Workspace under their own name, so
+   Uploaded files were mirrored into the working folder under their own name, so
    their names resolve again as {name, path:name} (missing files skip
    silently server-side). Never throws. */
 function stashBubbleRefs(userEl, uploads) {
   try {
     if (!userEl || !userEl.dataset) return;
-    userEl.dataset.wsrefs = JSON.stringify((pendingWsRefs || []).slice(0, 10));
+    userEl.dataset.wsrefs = JSON.stringify((pendingFolderRefs || []).slice(0, 10));
     userEl.dataset.skill = pendingSkill
       ? JSON.stringify({ name: pendingSkill.name, instructions: String(pendingSkill.instructions || "").slice(0, 6000) })
       : "";
@@ -4700,7 +4688,7 @@ function stashBubbleRefs(userEl, uploads) {
 function restoreBubbleRefs(userEl, text) {
   // Re-arm the one-shot picks from the bubble's stash, keeping only tokens
   // still present in the resent text (same hasToken rule as normal send).
-  try { pendingWsRefs = []; } catch (_) {}
+  try { pendingFolderRefs = []; } catch (_) {}
   try { pendingSkill = null; } catch (_) {}
   const value = String(text || "");
   try {
@@ -4709,8 +4697,8 @@ function restoreBubbleRefs(userEl, text) {
       refs.forEach((r) => {
         try {
           if (r && r.name && r.path && hasToken(value, "@", String(r.name))) {
-            if (!pendingWsRefs.some((x) => x.path === r.path)) {
-              pendingWsRefs.push({ name: String(r.name).slice(0, 200), path: String(r.path).slice(0, 500) });
+            if (!pendingFolderRefs.some((x) => x.path === r.path)) {
+              pendingFolderRefs.push({ name: String(r.name).slice(0, 200), path: String(r.path).slice(0, 500) });
             }
           }
         } catch (_) {}
@@ -4723,8 +4711,8 @@ function restoreBubbleRefs(userEl, text) {
       ups.forEach((n) => {
         try {
           const nm = String(n || "");
-          if (nm && hasToken(value, "@", nm) && !pendingWsRefs.some((x) => x.name === nm)) {
-            if (pendingWsRefs.length < 10) pendingWsRefs.push({ name: nm.slice(0, 200), path: nm.slice(0, 500) });
+          if (nm && hasToken(value, "@", nm) && !pendingFolderRefs.some((x) => x.name === nm)) {
+            if (pendingFolderRefs.length < 10) pendingFolderRefs.push({ name: nm.slice(0, 200), path: nm.slice(0, 500) });
           }
         } catch (_) {}
       });
@@ -4822,7 +4810,7 @@ function continuesActivePick(q, prefix) {
   if (!s) return false;
   const names = [];
   if (prefix === "@") {
-    pendingWsRefs.forEach((r) => names.push(r.name));
+    pendingFolderRefs.forEach((r) => names.push(r.name));
     pendingAttachments.forEach((a, i) => {
       if (a && a.type === "image") names.push(imageLabelFor(i));
     });
@@ -4839,7 +4827,7 @@ function continuesActivePick(q, prefix) {
 
 async function showMentionMenu(query) {
   // "@" picker: breadcrumb pathbar above the template (uploads + dir contents).
-  const mySeq = ++wsPickerSeq;
+  const mySeq = ++folderPickerSeq;
   const raw = String(query || "").replace(/^"+|"+$/g, "");
   let dir = "";
   let filter = raw.toLowerCase();
@@ -4848,16 +4836,16 @@ async function showMentionMenu(query) {
     dir = raw.slice(0, slash);
     filter = raw.slice(slash + 1).toLowerCase();
   }
-  wsPickerDir = dir;
+  folderPickerDir = dir;
   let entries = null;
   try {
-    const res = await fetch("/api/workspace?path=" + encodeURIComponent(dir), { cache: "no-store" });
+    const res = await fetch("/api/folder?path=" + encodeURIComponent(dir), { cache: "no-store" });
     const data = await res.json().catch(() => null);
     if (res.ok && data && Array.isArray(data.entries)) entries = data.entries;
   } catch (_) {
     entries = null;
   }
-  if (mySeq !== wsPickerSeq) return; // stale keystroke, a newer fetch owns the bar
+  if (mySeq !== folderPickerSeq) return; // stale keystroke, a newer fetch owns the bar
   if (!entries && !pendingAttachments.length) {
     hideMentionMenu();
     return;
@@ -4869,10 +4857,10 @@ function renderPathbar(dir, filter, entries) {
   const bar = ensurePathbar();
   if (!bar) return;
   bar.innerHTML = "";
-  // Breadcrumb: Workspace root + segments (click any of them to go back).
+  // Breadcrumb: working-folder root + segments (click any of them to go back).
   const crumb = document.createElement("div");
   crumb.className = "pk-crumb";
-  crumb.appendChild(wsChip(null, "Workspace", () => wsNav(""), !dir));
+  crumb.appendChild(wsChip(null, "Working folder", () => wsNav(""), !dir));
   if (dir) {
     let acc = "";
     const segs = dir.split("/").filter(Boolean);
@@ -4938,35 +4926,35 @@ function renderPathbar(dir, filter, entries) {
       bar.appendChild(wsRow(WS_FOLDER_SVG, e.name, `${e.items ?? 0} items`, () => wsNav(rel), "pk-ico-folder"));
     } else {
       const thumb = safeRel && isChatImageName(e.name)
-        ? "/api/workspace/download?path=" + encodeURIComponent(rel)
+        ? "/api/folder/download?path=" + encodeURIComponent(rel)
         : null;
       bar.appendChild(wsRow(WS_FILE_SVG, e.name, formatSize(e.size || 0), () => {
-        pickWorkspaceFile(rel);
+        pickFolderFile(rel);
         closePathbar(true);
       }, null, thumb));
     }
   });
 }
 
-function pickWorkspaceFile(rel) {
+function pickFolderFile(rel) {
   // Picking a file writes only "@name" into the text; the server injects
   // that file's metadata exactly where the token stands.
   const name = String(rel).split("/").pop();
-  if (!pendingWsRefs.some((r) => r.path === rel)) {
-    if (pendingWsRefs.length >= 10) {
-      toast("Max 10 workspace refs");
+  if (!pendingFolderRefs.some((r) => r.path === rel)) {
+    if (pendingFolderRefs.length >= 10) {
+      toast("Max 10 folder files");
       return;
     }
-    pendingWsRefs.push({ path: rel, name });
+    pendingFolderRefs.push({ path: rel, name });
   }
   replaceTriggerToken(`@${name}`);
 }
 
 function uploadToPickerDir(dir) {
   // "+" on an empty picker folder: opens the file manager, uploads straight
-  // into that Workspace folder, then refreshes the picker instantly. The
-  // server bumps the workspace version on upload, so the Workspace page
-  // updates by itself too (push, no polling).
+  // into that working-folder subfolder, then refreshes the picker instantly. The
+  // server bumps the folder version on upload, so the folder page updates by
+  // itself too (push, no polling).
   try {
     const input = document.createElement("input");
     input.type = "file";
@@ -4991,15 +4979,15 @@ function uploadToPickerDir(dir) {
           reader.onerror = () => reject(new Error("read failed"));
           reader.readAsDataURL(file);
         });
-        const res = await fetch("/api/workspace", {
+        const res = await fetch("/api/folder", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "upload", path: dir || "", name: file.name, data: dataUrl }),
         });
         const out = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(out?.error || "upload failed");
-        toast("Uploaded to Workspace");
-        showMentionMenu(wsPickerDir ? `${wsPickerDir}/` : "");
+        toast("Uploaded to the working folder");
+        showMentionMenu(folderPickerDir ? `${folderPickerDir}/` : "");
       } catch (err) {
         toast(err instanceof Error && err.message ? err.message : "Upload failed");
       }
@@ -5012,7 +5000,7 @@ const WS_SKILL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height=
 
 async function showSkillsMenu(query) {
   // "/" picker: same attached panel design as "@", but with skills.
-  const mySeq = ++wsPickerSeq;
+  const mySeq = ++folderPickerSeq;
   const q = String(query || "").trim().toLowerCase();
   try {
     if (!skillsCache || Date.now() - skillsCache.at > 15000) {
@@ -5024,7 +5012,7 @@ async function showSkillsMenu(query) {
     hideMentionMenu();
     return;
   }
-  if (mySeq !== wsPickerSeq) return; // stale keystroke
+  if (mySeq !== folderPickerSeq) return; // stale keystroke
   const list = (skillsCache.list || []).filter(
     (s) => s && s.name && (!q || String(s.name).toLowerCase().includes(q))
   );
@@ -5094,171 +5082,6 @@ function checkMention() {
     }
     showMentionMenu(am[2]);
   } else hideMentionMenu();
-}
-
-/* ---------- agent mode (limited default, full access with notice) ---------- */
-// Scope (NOT approval): limited_access = Workspace jail only (default),
-// full_access = whole machine. BOTH run terminal commands immediately with
-// no per-command question. Synced with the server (terminal_access.json).
-function persistMode() {
-  try {
-    localStorage.setItem(MODE_KEY, agentMode);
-  } catch (_) {}
-  // Sync scope to the server (best-effort, never blocks the UI).
-  try {
-    fetch("/api/terminal_access", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope: agentMode === "free" ? "full_access" : "limited_access" }),
-    }).catch(() => {});
-  } catch (_) {}
-}
-
-async function syncModeFromServer() {
-  // Server is the source of truth (fresh tab / other device changed it).
-  try {
-    const res = await fetch("/api/terminal_access", { cache: "no-store" });
-    if (!res.ok) return;
-    const data = await res.json().catch(() => null);
-    const scope = data && data.scope;
-    if (scope === "full_access" || scope === "limited_access") {
-      agentMode = scope === "full_access" ? "free" : "restricted";
-      try {
-        localStorage.setItem(MODE_KEY, agentMode);
-      } catch (_) {}
-      renderModeMenu();
-    }
-  } catch (_) {}
-}
-
-function renderModeMenu() {
-  const menu = document.getElementById("modeMenu");
-  const btn = document.getElementById("modeBtn");
-  if (!menu) return;
-  if (btn) btn.classList.toggle("full", agentMode === "free");
-  const modeLabel = document.getElementById("modeLabel");
-  if (modeLabel) modeLabel.textContent = agentMode === "free" ? "Full access" : "Limited access";
-  if (btn) btn.title = agentMode === "free" ? "Full access — any command on the whole machine, no questions" : "Limited access — Workspace only, no questions";
-  menu.innerHTML = "";
-  const head = document.createElement("div");
-  head.className = "mode-head";
-  head.textContent = "Agent permission";
-  menu.appendChild(head);
-  [
-    { val: "restricted", title: "Limited access", desc: "Workspace only, no questions" },
-    { val: "free", title: "Full access", desc: "Whole machine, no questions" },
-  ].forEach((opt) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.dataset.mode = opt.val;
-    b.className = "mode-opt" + (agentMode === opt.val ? " active" : "");
-    const radio = document.createElement("span");
-    radio.className = "radio";
-    radio.setAttribute("aria-hidden", "true");
-    const icon = document.createElement("span");
-    icon.className = "mode-opt-icon";
-    icon.setAttribute("aria-hidden", "true");
-    icon.innerHTML = opt.val === "restricted"
-      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 19 6v5.2c0 4.2-2.9 7.3-7 9.2-4.1-1.9-7-5-7-9.2V6l7-2.5Z"/><path d="m8.8 12 2 2 4.4-4.6"/></svg>`
-      : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2.8 4.8 13.2h5.4L9 21.2l8.2-10.4h-5.4L13 2.8Z"/></svg>`;
-    const txt = document.createElement("span");
-    const title = document.createElement("b");
-    title.textContent = opt.title;
-    const desc = document.createElement("span");
-    desc.className = "desc";
-    desc.textContent = opt.desc + (opt.val === "restricted" ? " (default)" : "");
-    txt.appendChild(title);
-    txt.appendChild(desc);
-    b.appendChild(icon);
-    b.appendChild(txt);
-    b.appendChild(radio);
-    b.addEventListener("click", () => {
-      menu.classList.remove("open");
-      if (opt.val === "free" && agentMode !== "free") {
-        showFullAccessWarning();
-        return;
-      }
-      agentMode = opt.val;
-      persistMode();
-      renderModeMenu();
-    });
-    menu.appendChild(b);
-  });
-}
-
-function initModeMenu() {
-  const btn = document.getElementById("modeBtn");
-  const menu = document.getElementById("modeMenu");
-  if (!btn || !menu) return;
-  renderModeMenu();
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    document.getElementById("attachMenu")?.classList.remove("open");
-    document.getElementById("attachBtn")?.classList.remove("active");
-    menu.classList.toggle("open");
-  });
-  document.addEventListener("click", (e) => {
-    if (!menu.classList.contains("open")) return;
-    if (menu.contains(e.target) || e.target === btn || btn.contains(e.target)) return;
-    menu.classList.remove("open");
-  });
-}
-
-/* ---------- full-access warning dialog with 5s countdown accept ---------- */
-function showFullAccessWarning() {
-  openModal(`
-    <div class="modal-head">
-      <div class="tile"><span class="tile-letters">!</span></div>
-      <div class="modal-head-text"><h3>Enable Full access?</h3><p>Read carefully before accepting</p></div>
-      <button class="modal-close" data-close type="button" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
-          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <ul class="warn-list">
-        <li>Terminal commands run <b>immediately</b> with no approval step.</li>
-        <li>The agent can read, write, and delete files on this machine.</li>
-        <li>Only use this on a machine you own and trust.</li>
-        <li>You can switch back to <b>Restricted</b> anytime from the same menu.</li>
-      </ul>
-    </div>
-    <div class="modal-foot">
-      <button class="btn" id="fullAccessDecline" type="button">Decline</button>
-      <button class="btn btn-primary" id="fullAccessAccept" type="button" disabled>Accept (5)</button>
-    </div>`);
-  const acceptBtn = document.getElementById("fullAccessAccept");
-  const declineBtn = document.getElementById("fullAccessDecline");
-  if (!acceptBtn) return;
-  let left = 5;
-  const timer = setInterval(() => {
-    if (!acceptBtn.isConnected) {
-      clearInterval(timer);
-      return;
-    }
-    left -= 1;
-    if (left <= 0) {
-      clearInterval(timer);
-      acceptBtn.disabled = false;
-      acceptBtn.textContent = "Accept";
-      acceptBtn.focus();
-    } else {
-      acceptBtn.textContent = `Accept (${left})`;
-    }
-  }, 1000);
-  declineBtn?.addEventListener("click", () => {
-    clearInterval(timer);
-    closeModal();
-  });
-  acceptBtn.addEventListener("click", () => {
-    if (acceptBtn.disabled) return;
-    clearInterval(timer);
-    agentMode = "free";
-    persistMode();
-    renderModeMenu();
-    closeModal();
-  });
 }
 
 /* ---------- question / approval cards ----------
@@ -7595,7 +7418,7 @@ function renderRunFrame(frame) {
       catchupPartsRaw += text;
       try {
         catchupPartsEl.innerHTML = formatRich(catchupPartsRaw);
-        try { linkifyWorkspacePaths(catchupPartsEl); } catch (_) {}
+        try { linkifyFolderPaths(catchupPartsEl); } catch (_) {}
       } catch (_) {}
       if (!replayQuiet) scrollToBottom();
       return;
@@ -8217,7 +8040,7 @@ async function saveComposerEdit(value) {
         const div = document.createElement("div");
         div.innerHTML = formatRich(v);
         try {
-          if (el.classList.contains("assistant")) linkifyWorkspacePaths(div);
+          if (el.classList.contains("assistant")) linkifyFolderPaths(div);
         } catch (_) {}
         content.appendChild(div);
       }
@@ -8543,7 +8366,6 @@ export async function initChat() {
   initAttachments();
   initMic();
   initUserMessageGestures();
-  initModeMenu();
   syncModeFromServer().catch(() => {});
   ensureEditBanner();
   // Restored live sessions survive refresh — the task keeps all its data.
@@ -8602,8 +8424,8 @@ export async function initChat() {
       copyCodeBlock(btn);
     } catch (_) {}
   });
-  // Workspace path links (model-written folder/file paths): one delegated
-  // listener — links are rendered dynamically by linkifyWorkspacePaths and
+  // Folder path links (model-written folder/file paths): one delegated
+  // listener — links are rendered dynamically by linkifyFolderPaths and
   // reuse the same reveal flow as @file tokens (never throws).
   chatScroll.addEventListener("click", (e) => {
     try {
@@ -8611,7 +8433,7 @@ export async function initChat() {
       if (!link || !chatScroll.contains(link)) return;
       e.stopPropagation();
       e.preventDefault();
-      revealWorkspaceFile(link.getAttribute("data-ws-path") || "");
+      revealFolderFile(link.getAttribute("data-ws-path") || "");
     } catch (_) {}
   });
 

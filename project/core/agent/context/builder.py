@@ -84,9 +84,8 @@ def _ensure_x5agent_best_effort() -> None:
     except Exception:
         pass
     try:
-        ws = Path(__file__).resolve().parents[4] / "X5Agent" / "Workspace"
         data = Path(__file__).resolve().parents[4] / "X5Agent" / "Data"
-        for d in [ws, data, data / "database", data / "vector",
+        for d in [data, data / "default_folder", data / "database", data / "vector",
                   data / "files" / "images", data / "files" / "audio",
                   data / "files" / "videos", data / "skills",
                   data / "configs" / "plugin_configs"]:
@@ -98,12 +97,16 @@ def _ensure_x5agent_best_effort() -> None:
         pass
 
 
-def _workspace_path_str() -> str:
+def _working_folder_str() -> str:
     try:
-        ws = (Path(__file__).resolve().parents[4] / "X5Agent" / "Workspace").resolve()
-        return str(ws)
+        import sys as _sys
+        _proj = Path(__file__).resolve().parents[3]
+        if str(_proj) not in _sys.path:
+            _sys.path.insert(0, str(_proj))
+        from core.workfolder import get_path
+        return str(get_path())
     except Exception:
-        return "X5Agent/Workspace"
+        return str((Path(__file__).resolve().parents[4] / "X5Agent" / "Data" / "default_folder").resolve())
 
 
 def _browser_state_str() -> str:
@@ -127,49 +130,32 @@ def _browser_state_str() -> str:
     return "running (preview live active — user watches only, agent keeps control)"
 
 
-def _terminal_scope_str() -> str:
-    # Current terminal scope for the context (limited default). Never raises.
-    try:
-        import sys as _sys
-        _proj = Path(__file__).resolve().parents[3]
-        if str(_proj) not in _sys.path:
-            _sys.path.insert(0, str(_proj))
-        from core.tools.terminal.tool import _access_scope
-        scope = _access_scope()
-        return scope if scope == "full_access" else "limited_access"
-    except Exception:
-        return "limited_access"
-
-
 def _env_block() -> str:
-    # L4 system_info: time + OS + exact Workspace path + jail notice + terminal scope.
+    # L4 system_info: time + OS + working folder + full terminal access.
     _ensure_x5agent_best_effort()
     now = datetime.now(timezone.utc).astimezone()
     os_info = f"{platform.system()} {platform.release()} ({platform.machine()})"
-    ws = _workspace_path_str()
+    folder = _working_folder_str()
     proj = str(STORAGE_DB.parent.parent.resolve())
-    scope = _terminal_scope_str()
-    if scope == "full_access":
-        scope_line = ("- Terminal access: FULL access.\n"
-                      "- Full access means you may run terminal commands freely outside the Workspace folder.\n"
-                      "- File tools (workspace, read_file, write_file) stay jailed inside Workspace regardless.\n")
-    else:
-        scope_line = ("- Terminal access: LIMITED access (Workspace only).\n"
-                      "- Full access would mean you may run terminal commands freely outside the Workspace folder; "
-                      "it is currently OFF, so stay inside Workspace.\n"
-                      "- FORBIDDEN to exit Workspace by any method (.., absolute paths, symlinks, shell tricks). "
-                      "Any path outside Workspace is BLOCKED automatically.\n")
     return (
         f"[System Info - L4]\n"
         f"- DateTime: {now.strftime('%Y-%m-%d %H:%M:%S %Z')} (ISO: {now.isoformat()})\n"
         f"- OS: {os_info}\n"
         f"- Python: {platform.python_version()}\n"
-        f"- You are inside: {ws}\n"
-        f"{scope_line}"
-        f"- This Workspace folder is your device. Do EVERYTHING here (experiments, files, folders, terminal).\n"
+        f"- Working folder: {folder}\n"
+        f"- This is the folder you work in. It is the terminal's default directory, and the "
+        f"file tools (read_file, write_file, search_files, file_metadata, file_to_base64) "
+        f"read and write inside it only. Use the terminal for paths outside it.\n"
+        f"- Terminal access: FULL access - any command, any folder, no jail and no approval step. "
+        f"Pass workdir to run somewhere else.\n"
+        f"- Keep test/experiment files in the system temp folder (tempfile.gettempdir()), "
+        f"not in the working folder.\n"
+        f"- Before a destructive terminal command (deleting files/folders, wiping data, "
+        f"force-removing), ask the user first with the question tool: one clear yes/no question "
+        f"that says exactly what will be deleted and how many items.\n"
         f"- System Core (read-only): {proj} - never write it. Data (X5Agent/Data) via memory/config tools only.\n"
         f"- Browser: {_browser_state_str()} (when running, a live preview bar is shown to the user automatically).\n"
-        f"- If the user asks whether the browser runs, answer DIRECTLY from that state line only — "
+        f"- If the user asks whether the browser runs, answer DIRECTLY from that state line only \u2014 "
         f"do not call any browser tool just to check (get_page_info is read-only and never boots it). "
         f"If they ask to open/start it, call open_browser (it boots on demand). "
         f"Never call open_browser on your own: when a browser tool fails with 'browser stopped', "
@@ -177,86 +163,55 @@ def _env_block() -> str:
     )
 
 
-def _workspace_block() -> str:
-    # Workspace OUTER level only: every file carries its full metadata shape
-    # (id + full path + type + size); folders show item counts. Never walks
-    # inside: enter any folder with the workspace tool (via tool_search) and
-    # every file there shows the SAME shape with its own path.
-    # Bounded: first 100 entries, counts capped.
+def _folder_map_block() -> str:
+    # L4 map of the working folder: every entry carries its full metadata shape
+    # (id + full path + type + size), folders show a capped item count. One
+    # level only (never walked deeper) and bounded to 20 entries by
+    # core.workfolder.file_map, so a real project folder stays cheap. The id is
+    # the working-folder-relative path used by @ mentions and the folder API.
     try:
-        ws = (Path(__file__).resolve().parents[4] / "X5Agent" / "Workspace").resolve()
+        import sys as _sys
+        _proj = Path(__file__).resolve().parents[3]
+        if str(_proj) not in _sys.path:
+            _sys.path.insert(0, _proj)
+        from core.workfolder import file_map
+        data = file_map(limit=20)
     except Exception:
         return ""
-    try:
-        if not ws.is_dir():
-            return "[Workspace - your work device: empty]"
-        children = sorted(
-            (p for p in ws.iterdir() if p.is_dir() or p.is_file()),
-            key=lambda p: (not p.is_dir(), p.name.lower()),
-        )
-    except Exception:
-        return ""
-    if not children:
-        return "[Workspace - your work device: empty]"
+    path = str(data.get("path") or "").replace("\\", "/")
+    files = data.get("files") or []
+    if not files:
+        return f"[Working folder map - L4]\n{path} is empty."
     lines = []
-    for p in children[:100]:
-        try:
-            if p.is_dir():
-                n = 0
-                trunc = False
-                try:
-                    for _ in p.iterdir():
-                        n += 1
-                        if n >= 1001:
-                            trunc = True
-                            break
-                except Exception:
-                    n = 0
-                lines.append(f"  folder: {p.name}/ ({n}{'+' if trunc else ''} items)")
-            else:
-                try:
-                    size = p.stat().st_size
-                except Exception:
-                    size = 0
-                ext = p.suffix.lower().lstrip(".") if p.suffix else "no-ext"
-                try:
-                    full = str(p.resolve()).replace("\\", "/")
-                except Exception:
-                    full = p.name
-                lines.append(f"  file: {p.name} (id: \"{p.name}\", path: \"{full}\", type: {ext}, size: {size} bytes)")
-        except Exception:
-            continue
-    # Virtual browser-downloads folder (read-only view, same rule as the
-    # workspace tool: hidden when a real folder with the same name exists).
-    try:
-        if not (ws / "downloads").exists():
-            from x5browser.config import LIBRARY_DOWNLOADS_DIR as _lib_dl
-            _lib = Path(str(_lib_dl))
-            if _lib.is_dir():
-                _n = 0
-                try:
-                    for _ in _lib.iterdir():
-                        _n += 1
-                        if _n >= 1001:
-                            break
-                except Exception:
-                    _n = 0
-                _dl_line = (f"  folder: downloads/ ({_n} items, type: folder, browser downloads, read-only)")
-                _fi = next((i for i, _l in enumerate(lines)
-                            if _l.startswith("  file:")), len(lines))
-                lines.insert(_fi, _dl_line)
-    except Exception:
-        pass
-    more = "" if len(children) <= 100 else f"\n  ... +{len(children) - 100} more"
-    return ("[Workspace map - outer level only: id + path + type + size - L4]\n"
-            + "\n".join(lines) + more
-            + "\n(Use these exact file path links as-is in any code or HTML: images, fonts, any file. "
-              "An @<file-id> mention in the user message refers to the map entry with that id. "
-              "You may copy any Workspace file into the folder you work in so everything lives in one "
-              "folder, then reference it by its file name. "
-              "In your reply text, mention a Workspace file ONLY as [label](workspace:folder/file.ext) "
-              "with the exact Workspace-relative path — this renders as a blue underlined link. "
-              "Never write bare folder/file paths or absolute paths as reply-text links; plain text stays plain.)")
+    for item in files:
+        if item.get("is_dir"):
+            count = item.get("items") or 0
+            plus = "+" if item.get("items_capped") else ""
+            lines.append(
+                f'  folder: {item.get("name")} (id: "{item.get("id")}", '
+                f'path: "{item.get("path")}", {count}{plus} items)'
+            )
+        else:
+            lines.append(
+                f'  file: {item.get("name")} (id: "{item.get("id")}", '
+                f'path: "{item.get("path")}", type: {item.get("type")}, '
+                f'size: {item.get("size")} bytes)'
+            )
+    if data.get("more"):
+        total = data.get("total") or len(files)
+        lines.append(
+            f"  ... more files exist (showing {len(files)}"
+            + (f" of at least {total}" if data.get("scan_capped") else f" of {total}")
+            + ")"
+        )
+    return ("[Working folder map - id + path + type + size - L4]\n"
+            + "\n".join(lines)
+            + "\n(Use these exact file paths as-is in any code or HTML: images, fonts, any file. "
+            "An @<file-id> mention in the user message refers to the map entry with that id. "
+            "Keep new files in this one folder so everything is referenced by its file name. "
+            "In your reply text, mention a file ONLY as [label](folder:folder/file.ext) with the "
+            "exact working-folder-relative path — this renders as a blue underlined link. "
+            "Never write bare folder/file paths or absolute paths as reply-text links; plain text stays plain.)")
 
 
 def _embedding_memory_block() -> str:
@@ -358,10 +313,10 @@ def _chat_block(limit: int = 30, exclude_trailing_stopped: bool = False) -> str:
 
 
 def _documents_block() -> str:
-    # Documents metadata: Workspace files MarkItDown can convert + index state.
+    # Documents metadata: working-folder files MarkItDown can convert + index state.
     # Bounded (first 20), read-only, never embeds — indexing happens lazily
     # inside document_search. Also purges orphan embeddings best-effort so a
-    # file deleted from Workspace never leaves stale vectors behind.
+    # deleted document never leaves stale vectors behind.
     try:
         import sys as _sys
         _proj = Path(__file__).resolve().parents[3]
@@ -378,8 +333,8 @@ def _documents_block() -> str:
         _proj2 = Path(__file__).resolve().parents[3]
         if str(_proj2) not in _sys2.path:
             _sys2.path.insert(0, str(_proj2))
-        from core.paths import workspace_root as _ws2
-        _wsroot = _ws2().resolve()
+        from core.workfolder import get_path as _folder_path
+        _wsroot = _folder_path().resolve()
     except Exception:
         _wsroot = None
     lines = []
@@ -507,18 +462,18 @@ def openai_tool_from_spec(name: str, description: str, inputs: dict) -> dict:
 def _core_tools_block() -> list[dict]:
     """Return core tools OpenAI-format specs.
 
-    Core = everything in core/tools EXCEPT workspace + document_search
-    (discoverable behind tool_search) + skill_create (lives in plugins but
-    classified core) + the 6 browser core tools
+    Core = everything in core/tools EXCEPT document_search (discoverable
+    behind tool_search) + skill_create (lives in plugins but classified core)
+    + the 6 browser core tools
     (open_browser/navigate/page_snapshot/click/fill/human_control).
     When no real user skill exists, skills_search/skills_view are dropped and
     skill_create alone is offered.
     """
     tools: list[dict] = []
     core_root = Path(__file__).resolve().parents[2] / "tools"
-    # workspace + document_search are discoverable (behind tool_search);
-    # the agent already sees the Workspace map, so no in-context doc tool.
-    _EXCLUDED_FROM_CORE = {"workspace", "document_search"}
+    # document_search is discoverable (behind tool_search); the agent already
+    # sees the working-folder map, so no in-context doc tool.
+    _EXCLUDED_FROM_CORE = {"document_search"}
     try:
         import sys as _sys2
         _proj2 = Path(__file__).resolve().parents[3]
@@ -574,7 +529,7 @@ def _core_tools_block() -> list[dict]:
 
 
 def _studio_env_block() -> str:
-    """Tiny env for studio-isolated turns (no maps, no memories, no Workspace).
+    """Tiny env for studio-isolated turns (no maps, no memories, no folder).
 
     The studio is self-contained: every file the turn touches lives in the
     studio's own assets. Never raises.
@@ -623,7 +578,7 @@ def _studio_tool_names() -> list[str]:
 def _studio_core_tools() -> list[dict]:
     """Studio tools in-context (no tool_search in studio).
 
-    image_search rides with its studio face (no Workspace words), same as
+    image_search rides with its studio face (no folder words), same as
     the engine pre-seed — one override, two readers.
     """
     out: list[dict] = []
@@ -655,7 +610,7 @@ def build_context(user_input: str, include_todo: bool = True, isolated: bool = F
     """
     8-layer context order (fixed):
       L1 core_identity.md + L2 general_mission.md + L3 policy.md -> system role
-      L4 system_info (time + Workspace path + jail) -> user content
+      L4 system_info (time + working folder + full terminal access) -> user content
       L5 memories (user profile + facts) -> user content (agent personality rides in the system prompt)
       L6 chat last-N + todo + triggers (explicit, never merged into L5) -> user content
       L7 available core tools list -> user content
@@ -679,7 +634,7 @@ def build_context(user_input: str, include_todo: bool = True, isolated: bool = F
     system_prompt = _read_system_prompt()
     if studio_mode:
         # Studio-isolated turn: sentence + state only. No main-session
-        # baggage (workspace map, docs, memories, todos, triggers) and
+        # baggage (folder map, docs, memories, todos, triggers) and
         # exactly 4 tools in-context (no tool_search in studio).
         # Old page codes are NEVER sent — the model reads via the tools.
         # — f-string replacement fields must stay on ONE line (multi-line
@@ -708,7 +663,7 @@ def build_context(user_input: str, include_todo: bool = True, isolated: bool = F
         system_prompt = system_prompt + "\n\n" + personality
     # L4
     env = _env_block()
-    ws_block = _workspace_block()
+    folder_block = _folder_map_block()
     docs_block = _documents_block()
     studios_hint = _studios_hint()
     # L5
@@ -730,8 +685,8 @@ def build_context(user_input: str, include_todo: bool = True, isolated: bool = F
         todo = _todo_block() if include_todo else ""
     parts = []
     parts.append(env)
-    if ws_block:
-        parts.append(ws_block)
+    if folder_block:
+        parts.append(folder_block)
     if docs_block:
         parts.append(docs_block)
     if studios_hint:
@@ -770,7 +725,7 @@ def build_context(user_input: str, include_todo: bool = True, isolated: bool = F
         _core_names = []
     if _core_names:
         parts.append("[Available CORE tools L7: " + ", ".join(_core_names)
-                     + " | Discoverable behind tool_search: workspace + all other browser/plugin tools]")
+                     + " | Discoverable behind tool_search: document_search + all other browser/plugin tools]")
     else:
         parts.append("[Available CORE tools L7: tool_search, terminal]")
     # L8 ALWAYS last (with bridge: re-anchor attention after the long L4-L7 context).

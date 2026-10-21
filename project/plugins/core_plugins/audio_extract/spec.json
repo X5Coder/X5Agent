@@ -1,11 +1,11 @@
 {
   "name": "audio_extract",
-  "description": "An audio extraction tool that pulls the audio track out of a video file INSIDE X5Agent/Workspace (or project/Data/files) using FFmpeg and saves it as mp3 or wav in the Workspace. Use whenever you need audio-only from a video (downloaded via video_download or uploaded) for transcription, listening, or further analysis. Returns the saved audio path plus duration and size metadata.",
+  "description": "An audio extraction tool that pulls the audio track out of a video file inside the working folder (or project/Data/files) using FFmpeg and saves it as mp3 or wav in the working folder. Use whenever you need audio-only from a video (downloaded via video_download or uploaded) for transcription, listening, or further analysis. Returns the saved audio path plus duration and size metadata.",
   "inputs": {
     "video_path": {
       "type": "string",
       "required": true,
-      "description": "Workspace-relative path of the source video (e.g. returned by video_download)."
+      "description": "Working-folder-relative path of the source video (e.g. returned by video_download)."
     },
     "audio_format": {
       "type": "string",
@@ -15,7 +15,7 @@
     "output_name": {
       "type": "string",
       "required": false,
-      "description": "Optional custom audio file name inside Workspace (single name, extension added if missing)."
+      "description": "Optional custom audio file name inside the working folder (single name, extension added if missing)."
     }
   }
 }

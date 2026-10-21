@@ -1,5 +1,5 @@
 """
-audio_extract - extract the audio track from a video file via FFmpeg, saved in X5Agent/Workspace only.
+audio_extract - extract the audio track from a video file via FFmpeg, saved in the working folder.
 WAV output is 16k mono (STT-ready, same as video_transcribe internal format). MP3 is compact default.
 """
 from __future__ import annotations
@@ -23,27 +23,28 @@ VIDEO_EXTS = (".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".mpg", ".mpeg", 
 ALLOWED_FORMATS = ("mp3", "wav")
 
 
-def _workspace_base() -> Path:
+def _folder_base() -> Path:
+    """The agent's current working folder (single owner: core.workfolder)."""
     try:
         import sys as _sys
         proj = Path(__file__).resolve().parents[3]
         if str(proj) not in _sys.path:
             _sys.path.insert(0, str(proj))
-        from core.paths import workspace_root as _ws
-        ws = _ws()
+        from core.workfolder import get_path
+        folder = get_path()
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws.resolve()
+        return folder.resolve()
     except Exception:
         repo = Path(__file__).resolve().parents[4]
-        ws = repo / "X5Agent" / "Workspace"
+        folder = repo / "X5Agent" / "Data" / "default_folder"
         try:
-            ws.mkdir(parents=True, exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        return ws.resolve()
+        return folder.resolve()
 
 
 def _media_bases(project_root: Path) -> list[Path]:
@@ -78,7 +79,7 @@ def _resolve_video(video_path: str) -> tuple[Path, Path]:
     if len(s) > 500:
         raise ValueError("video_path too long")
     project_root = Path(__file__).resolve().parents[3]
-    ws = _workspace_base()
+    ws = _folder_base()
     cand = Path(s)
     if not cand.is_absolute():
         ws_cand = (ws / s).resolve()
@@ -94,7 +95,7 @@ def _resolve_video(video_path: str) -> tuple[Path, Path]:
         cand = cand.resolve()
     allowed = [ws, project_root.resolve()] + _media_bases(project_root)
     if not any(_is_inside(cand, r) for r in allowed):
-        raise ValueError("Blocked: video_path must be inside Workspace, project or Data/files")
+        raise ValueError("Blocked: video_path must be inside the working folder, project or Data/files")
     if not cand.exists():
         raise FileNotFoundError(f"Video not found: {s[:120]}")
     if not cand.is_file():
@@ -186,13 +187,13 @@ def execute(video_path: str, audio_format: str | None = None, output_name: str |
         try:
             dest.relative_to(ws)
         except ValueError:
-            raise ValueError("Blocked: output_name escapes Workspace") from None
+            raise ValueError("Blocked: output_name escapes the working folder") from None
     else:
         dest = (ws / f"{src.stem}.{fmt}").resolve()
         try:
             dest.relative_to(ws)
         except ValueError:
-            raise ValueError("Blocked: output escapes Workspace") from None
+            raise ValueError("Blocked: output escapes the working folder") from None
 
     if fmt == "wav":
         cmd = ["ffmpeg", "-y", "-i", str(src), "-vn",

@@ -1,6 +1,6 @@
 {
   "name": "video_download",
-  "description": "A video download tool that fetches a public video from a URL (YouTube, TikTok, Instagram and hundreds of sites via yt-dlp) and saves the mp4 file INSIDE X5Agent/Workspace only. Use whenever the user gives a video link that must be analyzed. Returns the saved workspace path plus video metadata (title, uploader, duration, resolution) so the next step can call video_analyze or video_transcribe on the saved file.",
+  "description": "A video download tool that fetches a public video from a URL (YouTube, TikTok, Instagram and hundreds of sites via yt-dlp) and saves the mp4 file inside the working folder only. Use whenever the user gives a video link that must be analyzed. Returns the saved workspace path plus video metadata (title, uploader, duration, resolution) so the next step can call video_analyze or video_transcribe on the saved file.",
   "inputs": {
     "url": {
       "type": "string",
@@ -10,7 +10,7 @@
     "filename": {
       "type": "string",
       "required": false,
-      "description": "Optional custom file name inside Workspace (single name, .mp4 added if missing)."
+      "description": "Optional custom file name inside the working folder (single name, .mp4 added if missing)."
     },
     "quality": {
       "type": "string",

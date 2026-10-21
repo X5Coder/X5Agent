@@ -1,11 +1,11 @@
 {
   "name": "file_to_base64",
-  "description": "Encode ANY file (image, audio, video, document, anything) inside X5Agent/Workspace to base64 WITHOUT polluting the conversation. The base64 text is huge, so the tool NEVER returns it: it saves the base64 into a .b64.txt file in Workspace and returns one short sentence plus the metadata (paths, sizes, mime, sha256, data-url prefix, short preview). Reference the saved path in later tool calls (or read it in pieces with read_file) — never paste the base64 text into the chat.",
+  "description": "Encode ANY file (image, audio, video, document, anything) inside the working folder to base64 WITHOUT polluting the conversation. The base64 text is huge, so the tool NEVER returns it: it saves the base64 into a .b64.txt file in the working folder and returns one short sentence plus the metadata (paths, sizes, mime, sha256, data-url prefix, short preview). Reference the saved path in later tool calls (or read it in pieces with read_file) — never paste the base64 text into the chat.",
   "inputs": {
     "path": {
       "type": "string",
       "required": true,
-      "description": "Workspace-relative file path to encode, e.g. images/photo.png. Max 20MB."
+      "description": "Working-folder-relative file path to encode, e.g. images/photo.png. Max 20MB."
     },
     "output_name": {
       "type": "string",

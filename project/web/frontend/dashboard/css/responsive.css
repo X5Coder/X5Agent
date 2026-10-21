@@ -201,7 +201,7 @@
   .chat-inner {
     padding: 0 var(--sp-4);
   }
-  /* Workspace rectangles: full-width rows, finger-friendly on phones. */
+  /* Working-folder rectangles: full-width rows, finger-friendly on phones. */
   .ws-grid {
     grid-template-columns: 1fr;
     gap: var(--sp-2);
@@ -317,8 +317,7 @@
     padding: var(--sp-4);
   }
 
-  .attach-menu,
-  .mode-menu {
+  .attach-menu {
     /* Phones: same cards, fluid width, thumb-friendly rows. Anchored to the
        button via inset-inline-start so they never overflow a 320px screen. */
     min-width: min(280px, calc(100vw - 32px));
@@ -326,17 +325,11 @@
     max-width: calc(100vw - 32px);
     bottom: calc(100% + 12px);
   }
-  .mode-menu {
-    /* Permission menu stays compact like desktop. */
-    min-width: 0;
-    width: max-content;
-  }
   .attach-menu button {
     min-height: 56px;
     padding: 10px;
   }
-  .attach-menu button .opt-tile,
-  .mode-menu .mode-opt-icon {
+  .attach-menu button .opt-tile {
     width: 40px;
     height: 40px;
     flex-basis: 40px;
@@ -349,5 +342,18 @@
   .composer-btn.mode-pill .mode-label {
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  /* Working-folder picker on phones: stacked path bar, shorter list. */
+  .folder-pick-bar {
+    flex-wrap: wrap;
+  }
+  .folder-pick-bar .input {
+    flex: 1 1 100%;
+  }
+  .folder-pick-list {
+    max-height: 210px;
+  }
+  .folder-chip {
+    max-width: 140px;
   }
 }

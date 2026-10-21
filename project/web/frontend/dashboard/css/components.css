@@ -1877,7 +1877,7 @@
   display: none;
 }
 
-/* ---------- workspace (file browser) ---------- */
+/* ---------- working folder (file browser) ---------- */
 .ws-head {
   display: flex;
   align-items: flex-end;
@@ -1901,7 +1901,7 @@
   gap: 8px;
   flex-wrap: wrap;
 }
-/* Workspace pathbar: same professional glass as every dashboard template. */
+/* Working-folder pathbar: same professional glass as every dashboard template. */
 .ws-pathbar {
   display: flex;
   align-items: center;
@@ -2049,7 +2049,7 @@
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: var(--sp-3);
 }
-/* Workspace file cards: same professional glass as dashboard templates. */
+/* Working-folder file cards: same professional glass as dashboard templates. */
 .ws-card.ws-flash {
   border-color: var(--text-blue);
   box-shadow: var(--glass-hi), var(--glass-lo), var(--glass-sh), 0 0 0 1px var(--text-blue);
@@ -3812,46 +3812,6 @@
   background: var(--red);
   color: #fff;
 }
-/* Who-answers mode: two glass radio cards. */
-.mode-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.mode-opt {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  cursor: pointer;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--border-light);
-  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
-}
-.mode-opt input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-.mode-menu .mode-opt b {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.mode-opt i {
-  font-style: normal;
-  font-size: 11.5px;
-  color: var(--text-tertiary);
-  line-height: 1.5;
-}
-.mode-opt:has(input:checked) {
-  background: linear-gradient(180deg, rgba(90, 169, 255, 0.14), rgba(90, 169, 255, 0.04));
-  border-color: rgba(90, 169, 255, 0.45);
-}
-.mode-opt:has(input:checked) b {
-  color: var(--text-blue);
-}
 .row-end {
   display: flex;
   justify-content: flex-end;
@@ -4055,7 +4015,8 @@
 /* Plugins + skills + models empty state: top slim bar, same dashboard glass (copied from .card only). */
 #pluginsGrid .grid-empty,
 #skillsGrid .grid-empty,
-#modelsWrap .grid-empty {
+#modelsWrap .grid-empty,
+#mcpGrid .grid-empty {
   grid-column: 1 / -1;
   flex-direction: row;
   align-items: center;
@@ -4077,7 +4038,8 @@
 }
 #pluginsGrid .grid-empty::before,
 #skillsGrid .grid-empty::before,
-#modelsWrap .grid-empty::before {
+#modelsWrap .grid-empty::before,
+#mcpGrid .grid-empty::before {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
@@ -4088,7 +4050,8 @@
 /* Plugins + skills + models empty state: top slim bar, same dashboard glass (copied from .card only). */
 #pluginsGrid .grid-empty,
 #skillsGrid .grid-empty,
-#modelsWrap .grid-empty {
+#modelsWrap .grid-empty,
+#mcpGrid .grid-empty {
   grid-column: 1 / -1;
   flex-direction: row;
   align-items: center;
@@ -4110,7 +4073,8 @@
 }
 #pluginsGrid .grid-empty::before,
 #skillsGrid .grid-empty::before,
-#modelsWrap .grid-empty::before {
+#modelsWrap .grid-empty::before,
+#mcpGrid .grid-empty::before {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
@@ -4120,11 +4084,12 @@
 }
 /* Plugins + skills empty state: slim centered bar at the top (models keeps start-aligned). */
 #pluginsGrid .grid-empty,
-#skillsGrid .grid-empty {
+#skillsGrid .grid-empty,
+#mcpGrid .grid-empty {
   justify-content: center;
   text-align: center;
 }
-/* Small inline retry for the workspace load error. */
+/* Small inline retry for the working-folder load error. */
 .ws-retry-btn {
   height: 28px;
   padding: 0 16px;
@@ -4919,10 +4884,11 @@
   border-radius: 6px;
 }
 
-/* ---------- agent mode pill: wide oval template showing the current state ---------- */
+/* ---------- working-folder pill: wide oval template showing the folder name ---------- */
 .composer-btn.mode-pill {
   width: auto;
-  flex: 0 0 auto;
+  max-width: 190px;
+  flex: 0 1 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4937,6 +4903,12 @@
   color: var(--text-secondary);
   white-space: nowrap;
 }
+.composer-btn.mode-pill .mode-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
 .composer-btn.mode-pill svg {
   width: 14px;
   height: 14px;
@@ -4945,30 +4917,6 @@
 .composer-btn.mode-pill:hover {
   color: var(--text-primary);
   background: var(--fill-tsp-white-main);
-}
-.composer-btn.mode-pill.full {
-  color: var(--text-blue);
-  background: rgba(59, 158, 255, 0.12);
-  border-color: rgba(59, 158, 255, 0.35);
-}
-.mode-check {
-  margin-inline-start: auto;
-  font-weight: 600;
-  color: var(--text-blue);
-}
-.attach-menu button:hover .mode-check {
-  color: var(--text-blue);
-}
-.mode-desc {
-  display: block;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
-  opacity: 0.7;
-  margin-left: auto;
-  margin-top: 0;
 }
 
 /* ---------- model download progress ---------- */
@@ -4999,24 +4947,6 @@
 }
 .dl-label[hidden] {
   display: none;
-}
-
-/* ---------- full-access warning dialog ---------- */
-.warn-list {
-  margin: 0;
-  padding-inline-start: 18px;
-  display: grid;
-  gap: 8px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-secondary);
-}
-.warn-list b {
-  color: var(--text-primary);
-}
-#fullAccessAccept:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* ---------- question / approval card ---------- */
@@ -5066,132 +4996,11 @@
 }
 
 
-/* ---------- agent permission menu ---------- */
-.mode-menu {
-  min-width: min(248px, calc(100vw - 28px));
-  max-width: calc(100vw - 28px);
-  padding: 6px;
-  overflow: hidden;
-  background: linear-gradient(145deg, rgba(37, 37, 37, 0.98), rgba(20, 20, 20, 0.98));
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  border-radius: 18px;
-  transform-origin: bottom left;
-}
-.mode-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px 8px;
-  color: var(--text-secondary);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  margin-bottom: 5px;
-}
-.mode-head-icon,
-.mode-opt-icon {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  color: #8dbdff;
-  background: rgba(59, 158, 255, 0.12);
-  border: 1px solid rgba(59, 158, 255, 0.22);
-  border-radius: 10px;
-}
-.mode-head-icon { width: 23px; height: 23px; font-size: 13px; border-radius: 8px; }
-.mode-menu .mode-opt {
-  min-height: 48px;
-  gap: 8px;
-  padding: 8px !important;
-  margin: 2px 0;
-  transform: translate3d(0, 0, 0);
-  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), background 200ms ease, border-color 200ms ease, box-shadow 220ms ease;
-}
-.mode-menu .mode-opt {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center;
-  justify-content: flex-start;
-  width: 100%;
-  background: transparent;
-  /* Transparent border by default: selecting never shifts layout. */
-  border: 1px solid transparent !important;
-  border-radius: 14px;
-  cursor: pointer;
-  color: var(--text-primary) !important;
-  text-align: start;
-}
-.mode-menu .mode-opt > span:not(.mode-opt-icon):not(.radio) {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-.mode-menu .mode-opt:hover {
-  background: rgba(255, 255, 255, 0.065) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
-  transform: translate3d(3px, 0, 0);
-}
-.mode-menu .mode-opt.active {
-  background: linear-gradient(90deg, rgba(59, 158, 255, 0.17), rgba(59, 158, 255, 0.045)) !important;
-  border-color: rgba(59, 158, 255, 0.44) !important;
-  box-shadow: inset 3px 0 0 var(--blue), 0 6px 16px rgba(0, 0, 0, 0.16);
-}
-.mode-menu .mode-opt-icon {
-  width: 29px;
-  height: 29px;
-  font-size: 13px;
-  border-radius: 9px;
-}
-.mode-menu .mode-opt-icon svg {
-  width: 16px;
-  height: 16px;
-}
-.mode-menu .mode-opt[data-mode="free"] .mode-opt-icon {
-  color: #ffd28a;
-  background: rgba(255, 176, 64, 0.1);
-  border-color: rgba(255, 176, 64, 0.18);
-}
-.mode-menu .mode-opt .radio {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  border-radius: 50%;
-  border: 2px solid var(--text-disable);
-  margin-top: 2px;
-  position: relative;
-  transition: border-color var(--dur) var(--ease);
-}
-.mode-menu .mode-opt.active .radio {
-  border-color: var(--blue);
-}
-.mode-menu .mode-opt.active .radio::after {
-  content: "";
-  position: absolute;
-  inset: 3px;
-  border-radius: 50%;
-  background: var(--blue);
-}
-.mode-opt b {
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-  display: block;
-}
-.mode-menu .mode-opt .desc {
-  font-size: 10px;
-  color: var(--text-secondary);
-  display: block;
-  margin-top: 2px;
-  letter-spacing: 0;
-  text-transform: none;
-  font-family: inherit;
-}
-
 /* ---------- ask strip: fused above the composer, chips + composer-last ----------
    The strip pulls the composer up over its bottom padding (-20px / 28px),
    so chips and composer read as one fused template. Composer itself is the
-   custom-reply choice: no separate custom button. While asking, the +,
-   mode and mic controls hide — only SEND stays. */
+   custom-reply choice: no separate custom button. While asking, the + and
+   mic controls hide — only SEND stays. */
 /* Dedicated enter: the strip rises softly out of the composer (GPU only). */
 @keyframes ask-in {
   from { opacity: 0; transform: translateY(16px); }
@@ -6501,7 +6310,7 @@ h4,
   from { opacity: 1; transform: translate3d(0, 0, 0); }
   to { opacity: 0; transform: translate3d(0, 10px, 0); }
 }
-/* NOTE: pk-* prefix is intentional — .ws-* names belong to the Workspace
+/* NOTE: pk-* prefix is intentional — .ws-* names belong to the working-folder
    page styles (their .ws-pathbar is display:flex, which crammed this panel
    into one line). Never reuse bare ws-* here. */
 .pk-bar {
@@ -6734,10 +6543,10 @@ h4,
 .msg-content .hl-tok-msg {
   color: var(--text-blue);
 }
-/* Explicit Workspace file links [label](workspace:path) inside assistant
+/* Explicit working-folder file links [label](folder:path) inside assistant
    replies: blue + always underlined (never color alone). A click jumps to
-   the Workspace page with the file revealed exactly at its path. Plain
-   sentences never become links. */
+   the Working Folder page with the file revealed exactly at its path.
+   Plain sentences never become links. */
 .msg-content .ws-path-link {
   color: var(--text-blue);
   background: none;
@@ -7278,7 +7087,7 @@ h4,
   background: linear-gradient(145deg, var(--blue-hi), var(--blue-deep));
   opacity: 1;
 }
-/* Full-screen PDF preview (same edge-to-edge pattern as the workspace viewer). */
+/* Full-screen PDF preview (same edge-to-edge pattern as the working-folder viewer). */
 .modal-backdrop:has(.pdf-preview-dialog) {
   padding: 0;
 }
@@ -11390,4 +11199,80 @@ body:not(.browser-visible) #liveMini {
 @media (prefers-reduced-motion: reduce) {
   .plan-card { animation: none; }
   .plan-bar-fill { transition: none; }
+}
+
+/* ---------- working-folder picker (composer pill -> dialog) ---------- */
+.folder-pick { display: flex; flex-direction: column; gap: var(--sp-3); }
+.folder-pick-bar { display: flex; align-items: center; gap: var(--sp-2); }
+.folder-pick-label {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.folder-pick-bar .input { flex: 1 1 auto; min-width: 0; }
+.folder-pick-roots { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.folder-pick-roots:empty { display: none; }
+.folder-chip {
+  appearance: none;
+  border: 1px solid var(--border-light);
+  background: var(--fill-tsp-white-light);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-chip:hover { color: var(--text-primary); background: var(--fill-tsp-white-main); }
+.folder-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border-light);
+  border-radius: var(--r-md);
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.folder-pick-list::-webkit-scrollbar { width: 6px; }
+.folder-pick-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: var(--r-full); }
+.folder-pick-loading,
+.folder-pick-empty {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 10px;
+}
+.folder-row {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  text-align: start;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.folder-row:hover { background: var(--fill-tsp-white-light); border-color: var(--border-light); }
+.folder-row-ico { display: inline-flex; flex: 0 0 16px; color: var(--text-blue); }
+.folder-row-ico svg { width: 16px; height: 16px; }
+.folder-row-txt { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.folder-row-txt b { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-row-txt i { font-size: 11px; font-style: normal; color: var(--text-secondary); }
+.folder-row-chev { display: inline-flex; color: var(--text-secondary); flex: 0 0 14px; }
+.folder-row-chev svg { width: 14px; height: 14px; }
+.folder-pick-current {
+  font-size: 11px;
+  color: var(--text-secondary);
+  direction: ltr;
+  overflow-wrap: anywhere;
+  margin: 0;
+  min-height: 14px;
 }

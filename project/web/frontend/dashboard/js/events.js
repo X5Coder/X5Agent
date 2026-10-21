@@ -31,13 +31,13 @@ const SECTION_CHANNELS = {
   status: ["chat", "browser"],
   agent: ["chat_last50"],
   dashboard: ["dashboard"],
-  rest: ["workspace", "scheduler", "gateway"],
+  rest: ["folder", "scheduler", "gateway"],
 };
 // Transient channels (run progress + live card): pushed, never hashed.
 const TRANSIENT = new Set(["run", "chat_run", "chat_done", "live", "chat"]);
 // Channels worth remembering for late subscribers + the persistent cache.
 const STATE_TYPES = new Set(["chat", "browser", "chat_last50", "dashboard",
-  "workspace", "scheduler", "gateway", "live"]);
+  "folder", "scheduler", "gateway", "live"]);
 // Every SSE event name this client listens for (section frames + signals).
 const CHANNELS = ["ping", "unchanged", "changed", ...SECTION_ORDER,
   ...Object.values(SECTION_CHANNELS).flat(), ...TRANSIENT];

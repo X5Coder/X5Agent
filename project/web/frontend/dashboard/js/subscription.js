@@ -28,8 +28,6 @@ let _plans = null;
 let _plansError = "";
 let _status = null;
 let _busy = false;
-let _authMode = "register";
-let _authBusy = false;
 let _gateLocked = false;
 let _gateWired = false;
 // Bumped on every real change: an unchanged refresh must not rebuild the grid
@@ -238,8 +236,8 @@ function _planCard(plan, license) {
     setLabel("Trial used");
     btn.disabled = true;
   } else if (!license || !license.connected) {
-    setLabel("Create account");
-    btn.addEventListener("click", _focusAuth);
+    setLabel("Sign in required");
+    btn.addEventListener("click", _askSignIn);
   } else {
     // One label shape for every plan: Get <name> (or Start free).
     const labelText = plan.is_trial
@@ -300,60 +298,24 @@ function _renderPlans(plans, license) {
 
 /* ----------------------------------------------------------- status + auth */
 
-function _renderAuth(license) {
-  const box = document.getElementById("subAuth");
-  if (!box) return;
-  const state = String((license && license.state) || "signed_out");
-  const needsSignIn =
-    !license ||
-    !license.connected ||
-    ["device_superseded", "auth_required", "account_disabled"].includes(state);
-  box.hidden = !needsSignIn;
-  if (!needsSignIn) return;
-  _setAuthMode(_authMode);
+function _askSignIn() {
+  // One credential store: the console sign-in also restores the license
+  // session, so a lost license session simply goes there (no form here).
+  location.assign("/login.html?relogin=1&next=" + encodeURIComponent("/subscription"));
 }
 
-function _setAuthMode(mode) {
-  _authMode = mode === "login" ? "login" : "register";
-  const register = _authMode === "register";
-  const title = document.getElementById("subAuthTitle");
-  const text = document.getElementById("subAuthText");
-  const submit = document.getElementById("subAuthSubmit");
-  const switchBtn = document.getElementById("subAuthSwitch");
-  const password = document.getElementById("subAuthPassword");
-  if (title) title.textContent = register ? "Create your license account" : "Sign in to your license";
-  if (text) {
-    text.textContent = register
-      ? "This account is what the admin panel sees. Your 7-day trial starts immediately, on this device."
-      : "Use the license account registered on the admin panel. Signing in binds this device.";
-  }
-  if (submit) submit.textContent = register ? "Create account" : "Sign in";
-  if (switchBtn) {
-    switchBtn.textContent = register
-      ? "Already have an account? Sign in"
-      : "New here? Create an account";
-  }
-  if (password) {
-    password.setAttribute("autocomplete", register ? "new-password" : "current-password");
-  }
-  _setAuthMessage("");
-}
-
-function _setAuthMessage(message) {
-  const el = document.getElementById("subAuthMsg");
-  if (!el) return;
-  el.textContent = message || "";
-  el.hidden = !message;
-}
-
-function _focusAuth() {
-  const box = document.getElementById("subAuth");
-  if (box && !box.hidden) {
-    box.scrollIntoView({ block: "center", behavior: "smooth" });
-    document.getElementById("subAuthEmail")?.focus();
+/** Send a signed-out console to the sign-in page once (never a redirect loop). */
+function _bounceToSignIn() {
+  const KEY = "x5_license_bounce_at";
+  try {
+    // One automatic attempt per tab: a refused sign-in must not ping-pong
+    // between this page and the sign-in page. A fresh tab tries again.
+    if (sessionStorage.getItem(KEY) === "1") return;
+    sessionStorage.setItem(KEY, "1");
+  } catch (_) {
     return;
   }
-  toast("Create your license account first.");
+  location.assign("/login.html?relogin=1&next=" + encodeURIComponent("/subscription"));
 }
 
 /** Tell the rest of the console (dashboard bar, chat gate) the plan moved. */
@@ -365,7 +327,21 @@ function _notifyLicenseChanged() {
 
 function _renderStatus(license) {
   _status = license || null;
-  _renderAuth(license);
+  if (license && license.connected) {
+    try {
+      sessionStorage.removeItem("x5_license_bounce_at");
+    } catch (_) {}
+  } else {
+    // The sign-in page stashes the license server's own refusal reason, so a
+    // failed recovery says why instead of repeating "sign in again".
+    try {
+      const why = sessionStorage.getItem("x5_license_err");
+      if (why) {
+        sessionStorage.removeItem("x5_license_err");
+        toast(why);
+      }
+    } catch (_) {}
+  }
   _applyGate(license, true);
   _renderPlans(_plans, license);
 }
@@ -383,6 +359,12 @@ function _applyGate(license, known) {
   // No answer yet (boot): keep the page the user asked for, only block
   // navigation. A real answer that is not allowed forces the plans page.
   if (known === false) return;
+  // A signed-out install has no license session anywhere: the sign-in page is
+  // the only place that can restore it, so go there instead of a dead end.
+  if (!license || !license.connected) {
+    _bounceToSignIn();
+    return;
+  }
   if (GATE_ALLOWED.has(_currentPage()) || _isStudioRoute()) return;
   navigate("subscription", { push: false });
 }
@@ -485,54 +467,6 @@ async function _resumeCheckout() {
   }
 }
 
-/* ----------------------------------------------------------- account submit */
-
-async function _onAuthSubmit(event) {
-  event?.preventDefault?.();
-  if (_authBusy) return;
-  const register = _authMode === "register";
-  const emailEl = document.getElementById("subAuthEmail");
-  const passwordEl = document.getElementById("subAuthPassword");
-  const button = document.getElementById("subAuthSubmit");
-  const email = (emailEl?.value || "").trim();
-  const password = passwordEl?.value || "";
-  if (!email || !password) {
-    _setAuthMessage("Enter your email and password.");
-    return;
-  }
-  _authBusy = true;
-  if (button) {
-    button.disabled = true;
-    button.classList.add("loading");
-  }
-  _setAuthMessage("");
-  try {
-    const data = await _getJson(register ? "/api/license/register" : "/api/license/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    if (passwordEl) passwordEl.value = "";
-    const license = data.license || null;
-    _renderStatus(license);
-    if (_licenseWorks(license)) {
-      _notifyLicenseChanged();
-      toast(register ? "Account created — your trial is live" : "Signed in");
-    } else if (license && license.message) {
-      _setAuthMessage(String(license.message));
-    }
-  } catch (err) {
-    _setAuthMessage((err && err.message) || (register ? "Sign-up failed." : "Sign-in failed."));
-  } finally {
-    _authBusy = false;
-    if (button) {
-      button.disabled = false;
-      button.classList.remove("loading");
-    }
-    _setAuthMode(_authMode);
-  }
-}
-
 /* --------------------------------------------------------------------- boot */
 
 async function _refresh() {
@@ -580,11 +514,6 @@ export function licenseGateLocked() {
 }
 
 export function initSubscription() {
-  document.getElementById("subAuthForm")?.addEventListener("submit", _onAuthSubmit);
-  document.getElementById("subAuthSwitch")?.addEventListener("click", () => {
-    _setAuthMode(_authMode === "register" ? "login" : "register");
-  });
-
   window.addEventListener("x5:page-open", (event) => {
     if (event.detail === "subscription") _refresh();
   });

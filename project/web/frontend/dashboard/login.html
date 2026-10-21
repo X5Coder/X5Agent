@@ -362,7 +362,26 @@
         // Session = HttpOnly cookie only (set by the server), no tokens.
         // First run continues on the plan page (the server sends `next`).
         goText.textContent = mode === "setup" ? "Created ✓" : "Connected ✓";
-        var next = (mode === "setup" && x.d.next) ? x.d.next : "/";
+        // First run continues on the plan page (the server sends `next`);
+        // a sign-in lands back on the page that sent the user here.
+        var next = "/";
+        if (mode === "setup" && x.d.next) {
+          next = x.d.next;
+        } else {
+          var asked = "";
+          try { asked = new URLSearchParams(location.search).get("next") || ""; } catch (_) {}
+          if (asked.charAt(0) === "/" && asked.charAt(1) !== "/") next = asked;
+        }
+        // The console sign-in also restores the license session. When the
+        // license server refused it, keep its own reason so the next page can
+        // say why instead of a bare "sign in again".
+        try {
+          if (x.d.license && x.d.license.connected === false && x.d.license.message) {
+            sessionStorage.setItem("x5_license_err", String(x.d.license.message));
+          } else {
+            sessionStorage.removeItem("x5_license_err");
+          }
+        } catch (_) {}
         try { location.replace(next); } catch (_) { location.href = next; }
         return; }
       if (x.s === 409 && mode === "setup") {

@@ -94,3 +94,38 @@ a folder — never wrap it in a directory.
   3. write `features` (bullet list, one string per user-visible change).
 - Small fixes, refactors, docs-only, or internal cleanup: do NOT touch it.
 - Never invent versions or features — document only what you actually changed.
+
+## Protected-code re-signing — mandatory for every agent, every session
+
+Editing a file that is listed in `project/agent/manifest.json` makes the signed
+manifest stale. Until it is re-signed, the next official start through
+`agent_boot.py` treats every changed file as tampering and restores it from
+`X5Agent/Data/agent/snapshot` or the pinned commit. Re-signing is part of the
+edit, not an optional cleanup step.
+
+After the LAST protected edit of a session — and before starting or restarting
+the project — run these three commands from the repo root, in this order:
+
+1. `python project/scripts/agent_build.py --write`
+2. `python project/scripts/agent_repair.py --snapshot`
+3. `python project/scripts/agent_build.py --check-only`
+
+Step 3 must print `policy: trusted` and `manifest: trusted`. If it reports any
+`size mismatch` / `hash mismatch`, the tree changed between steps (usually a
+second session editing at the same time): wait for the other session to stop,
+then repeat steps 1-3. Never start the project on a failing check.
+
+Rules:
+- The release private key lives outside the repo
+  (`%USERPROFILE%\.x5agent\keys\release-2026-01.pem`, or `X5_AGENT_RELEASE_KEY`).
+  Never generate a replacement key, print it, copy it into the repo, or commit it.
+- Never hardcode a passphrase or secret in source to "gate" the build: shipped
+  code is readable, so that protects nothing and breaks the no-hardcoded-secrets
+  rule. The Ed25519 signature is the only accepted authority.
+- Files that are not in the manifest (e.g. `AGENTS.md`, `PROJECT_MAP.md`, docs,
+  the local test suite) need no re-signing.
+- For local development the gitignored watcher `python dev/x5_autosign.py` does
+  steps 1-3 after a quiet window and restarts the console when it is running
+  (`--once` signs now, `--stop` stops it). Never commit `dev/`.
+- Commit `project/agent/manifest.json` and `project/agent/manifest.sig` together
+  with the protected edits in the same commit.

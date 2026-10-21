@@ -104,20 +104,28 @@ class FakeClient:
         self.choose_error: Exception | None = None
         self.choose_payload: dict | None = None
 
-    def login(self, email: str, password: str, fingerprint: str) -> dict:
+    def login(self, email: str, password: str, fingerprint: str,
+              details: dict | None = None) -> dict:
+        # `details` is the device/app watermark the real client sends with the
+        # credentials; the double only records that it arrived.
         self.login_calls += 1
+        self.login_details = details
         if self.login_error:
             raise self.login_error
         return self.login_payload or session_payload()
 
-    def register(self, email: str, password: str, fingerprint: str) -> dict:
+    def register(self, email: str, password: str, fingerprint: str,
+                 details: dict | None = None) -> dict:
         self.register_calls += 1
+        self.register_details = details
         if self.register_error:
             raise self.register_error
         return self.register_payload or session_payload("trial")
 
-    def heartbeat(self, refresh_token: str, fingerprint: str, timeout=None) -> dict:
+    def heartbeat(self, refresh_token: str, fingerprint: str, timeout=None,
+                  details: dict | None = None) -> dict:
         self.heartbeat_calls += 1
+        self.heartbeat_details = details
         if self.heartbeat_error:
             raise self.heartbeat_error
         return self.heartbeat_payload or session_payload()
@@ -448,8 +456,8 @@ def test_bypass_requires_pytest_marker(monkeypatch):
 
 def test_notice_message_is_fixed_text():
     text = notices.blocked_message("active", [{"kind": "expired"}], "")
-    assert "expired" in text.lower()
-    assert "contact" in text.lower()
+    assert "subscription has ended" in text.lower()
+    assert notices.blocked_message("active", [{"kind": "suspended"}], "").count("Contact support") == 1
     assert "Subscription" in notices.blocked_message("signed_out", [], "")
 
 # ------------------------------------------------------------------ billing

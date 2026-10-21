@@ -91,9 +91,9 @@ def _collect_discoverable_specs() -> list[dict]:
                         tools.append(spec)
                     except Exception:
                         continue
-    # workspace + document_search live in core/tools on disk but are classified
-    # discoverable (behind tool_search); folders stay for import compat.
-    for _disc_name in ("workspace", "document_search"):
+    # document_search lives in core/tools on disk but is classified
+    # discoverable (behind tool_search); the folder stays for import compat.
+    for _disc_name in ("document_search",):
         try:
             _spec_path = root / "core" / "tools" / _disc_name / "spec.json"
             if _spec_path.exists():

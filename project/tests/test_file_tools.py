@@ -7,7 +7,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from core.agent.loop.dispatcher import execute_tool
-from core.paths import workspace_root
+from core.workfolder import get_path as folder_path
 from core.tools.registry import list_discoverable_specs, is_core_plugin
 
 TAG = "x5t_filetools"
@@ -15,7 +15,7 @@ created = []
 
 
 def _ws():
-    ws = workspace_root()
+    ws = folder_path()
     ws.mkdir(parents=True, exist_ok=True)
     return ws
 

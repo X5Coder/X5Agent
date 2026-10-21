@@ -218,7 +218,7 @@ def test_gateway_snapshot_is_the_single_gateway_state_builder():
     assert "state" in live
     # The rest section carries exactly this shape (one owner, no drift).
     rest = S._sync_rest()
-    assert set(rest) == {"workspace", "scheduler", "gateway"}
+    assert set(rest) == {"folder", "scheduler", "gateway"}
     assert rest["gateway"] == live
 
 
@@ -227,7 +227,7 @@ def test_every_section_is_keyed_by_the_channels_it_feeds():
     assert set(S._sync_status()) == {"chat", "browser"}
     assert set(S._sync_agent()) == {"chat_last50"}
     assert set(S._sync_dashboard()) == {"dashboard"}
-    assert set(S._sync_rest()) == {"workspace", "scheduler", "gateway"}
+    assert set(S._sync_rest()) == {"folder", "scheduler", "gateway"}
     assert isinstance(S._sync_agent()["chat_last50"], list)
     assert isinstance(S._sync_dashboard()["dashboard"], dict)
 

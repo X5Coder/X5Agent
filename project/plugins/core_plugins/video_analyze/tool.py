@@ -98,14 +98,14 @@ def _save_jobs(jobs: list[dict]) -> None:
     STORAGE.parent.mkdir(parents=True, exist_ok=True)
     STORAGE.write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding="utf-8")
 
-def _workspace_base() -> Path | None:
+def _folder_base() -> Path | None:
     try:
         import sys as _sysw
         _pw = Path(__file__).resolve().parents[3]
         if str(_pw) not in _sysw.path:
             _sysw.path.insert(0, str(_pw))
-        from core.paths import workspace_root as _ws
-        return _ws().resolve()
+        from core.workfolder import get_path
+        return get_path().resolve()
     except Exception:
         return None
 
@@ -116,7 +116,7 @@ def _validate_video_path(p: str | None, vid: str | None) -> Path:
     if not p and not vid:
         raise ValueError("At least one of video_path or video_id required")
     project_root = Path(__file__).resolve().parents[3]
-    ws_base = _workspace_base()
+    ws_base = _folder_base()
     if p:
         cand = Path(p)
         if not cand.is_absolute():
@@ -139,7 +139,7 @@ def _validate_video_path(p: str | None, vid: str | None) -> Path:
         if ws_base is not None:
             allowed.append(ws_base)
         if not any(_is_inside(cand, r) for r in allowed):
-            raise ValueError(f"video_path must be inside Workspace, project or Data/files")
+            raise ValueError(f"video_path must be inside the working folder, project or Data/files")
         if not cand.exists():
             raise FileNotFoundError(f"Video not found: {p}")
         if cand.stat().st_size > MAX_VIDEO_SIZE:

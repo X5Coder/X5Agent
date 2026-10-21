@@ -53,7 +53,7 @@ def test_import_guard_blocks_data_module(monkeypatch, tmp_path):
 
 
 def test_assert_no_user_code_on_path(monkeypatch, tmp_path):
-    data = tmp_path / "X5Agent" / "Workspace"
+    data = tmp_path / "X5Agent" / "Data"
     data.mkdir(parents=True)
     monkeypatch.setattr(
         launch_guard,

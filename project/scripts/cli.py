@@ -317,6 +317,26 @@ def _agent_boot() -> Path:
     )
 
 
+def _runtime_python() -> str:
+    """Interpreter that owns the console's dependencies.
+
+    install.py bootstraps ``.venv`` next to the repo when the system Python
+    cannot hold the packages (launch.py hides the per-user site-packages, so a
+    --user install is invisible at runtime). Starting the console with that
+    same interpreter is what keeps the deps importable.
+    """
+    venv = PROJECT_ROOT.parent / ".venv"
+    for candidate in (venv / "Scripts" / "python.exe", venv / "bin" / "python"):
+        if candidate.is_file():
+            try:
+                if os.path.abspath(str(candidate)) == os.path.abspath(sys.executable):
+                    return sys.executable
+            except OSError:
+                pass
+            return str(candidate)
+    return sys.executable
+
+
 def launch_detached(port: int = DEFAULT_PORT):
     """Start the console detached (survives SSH/terminal close).
 
@@ -329,7 +349,7 @@ def launch_detached(port: int = DEFAULT_PORT):
 
     log_path = _console_log_path()
     boot = _agent_boot()
-    cmd = [sys.executable, str(boot)]
+    cmd = [_runtime_python(), str(boot)]
     env = os.environ.copy()
     env["X5_PORT"] = str(int(port))
     try:
@@ -400,7 +420,8 @@ def main(argv=None) -> int:
             print(f"  start failed: {exc}", file=sys.stderr)
             return 1
         print(f"  {url}", flush=True)
-        os.execv(sys.executable, [sys.executable, str(boot)])
+        runtime = _runtime_python()
+        os.execv(runtime, [runtime, str(boot)])
     # Persistent (default): detached child survives SSH/terminal close.
     # Re-running this same command kills the old server above and starts
     # a fresh one on the same port.
