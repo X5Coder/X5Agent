@@ -1,13 +1,13 @@
 {
   "schema": "x5-agent-manifest/1",
-  "version": "0.88.0",
-  "commit": "1892f5189af9e95c5107f994f9d3fa5cff6842ac",
-  "build": "1892f5189af9e95c5107f994f9d3fa5cff6842ac",
+  "version": "0.89.0",
+  "commit": "cd163c2cee829e7b4b5c8ce37bcab13adb79135b",
+  "build": "cd163c2cee829e7b4b5c8ce37bcab13adb79135b",
   "release_key_id": "release-2026-01",
   "policy_hash": "97147c746b347c763db3013aef271c1ce5e647ec4e694a61e16713410baca030",
   "key_id": "release-2026-01",
-  "generated_at": "2026-10-21T11:55:45Z",
-  "root": "c110e223c944921fdabf9b7ca08c06f64b3744b4caaedba19612881d32ad6cf1",
+  "generated_at": "2026-10-21T12:38:06Z",
+  "root": "e3dfc2777c2daeadd58d2e79ff4e785d5ac4293cf804045f40d01c4aeb97fd4e",
   "files": [
     {
       "path": "agent_boot.py",
@@ -1033,10 +1033,10 @@
     },
     {
       "path": "project/install.py",
-      "sha256": "0fe1870f28b6c473f7a159be9693177aaff056b6e8e4aeb97579d2761cae5a1a",
-      "size": 45972,
+      "sha256": "5eaf1587c0d6d0989277fd06ccd8e907a9e894b5bb2032e2122a3d4e8e475eac",
+      "size": 47239,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 1
     },
     {
       "path": "project/launch.py",
@@ -1922,10 +1922,10 @@
     },
     {
       "path": "project/scripts/cli.py",
-      "sha256": "cbe2b6ac7efc993cc92a8952695a5615dddbe68a857fc2f930e255d5c918b447",
-      "size": 14496,
+      "sha256": "76e22392bf3bbb680fc8a4a85e0d379623729857179d699f840272db7c109cc0",
+      "size": 16460,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 1
     },
     {
       "path": "project/scripts/set_owner.py",
@@ -1943,8 +1943,8 @@
     },
     {
       "path": "project/scripts/x5console.service",
-      "sha256": "8b68930e3719ef8267a403df25dfa2821579d753c8853c4e40e54fc4b8749269",
-      "size": 710,
+      "sha256": "4b7f1b293dda4c3c3359a982a93df76c40b62d82535ed77e2a0a78afec7701d2",
+      "size": 708,
       "mode": "100644",
       "notice_count": 0
     },
@@ -2328,8 +2328,8 @@
     },
     {
       "path": "updates.json",
-      "sha256": "a573b7004f881ceb8481815877c10a4e9b372c48780d60c3e7ab0519aadb1df9",
-      "size": 60017,
+      "sha256": "83c8994fada1937352519c681219cd3615ea9912cb700aec25f3123cf54f1699",
+      "size": 60917,
       "mode": "100644",
       "notice_count": 0
     }
