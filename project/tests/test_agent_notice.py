@@ -62,3 +62,12 @@ def test_verify_reports_missing_notice(tmp_path):
     target.write_text("value = 1\n", encoding="utf-8")
 
     assert agent_notice.verify_files([target]) == [target]
+
+def test_verify_reports_duplicate_pair(tmp_path):
+    first = tmp_path / "one.py"
+    second = tmp_path / "two.py"
+    block = agent_notice._block(".py", 7, 999999, "\n")
+    first.write_text(block + "one = 1\n", encoding="utf-8")
+    second.write_text(block + "two = 2\n", encoding="utf-8")
+
+    assert agent_notice.verify_files([first, second]) == [second]

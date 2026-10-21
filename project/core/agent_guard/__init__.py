@@ -14,6 +14,7 @@ __all__ = [
     "import_guard",
     "launch_guard",
     "model_guard",
+    "points",
     "skill_guard",
     "time_guard",
 ]

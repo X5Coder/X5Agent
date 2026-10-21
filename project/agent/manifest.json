@@ -1,13 +1,13 @@
 {
   "schema": "x5-agent-manifest/1",
   "version": "0.85.0",
-  "commit": "fc0a866eaca1674d77da736165a47dd516b9c5a2",
-  "build": "fc0a866eaca1674d77da736165a47dd516b9c5a2",
+  "commit": "463e364e3e0444cd91a3559ab64719e75bee7c8d",
+  "build": "463e364e3e0444cd91a3559ab64719e75bee7c8d",
   "release_key_id": "release-2026-01",
   "policy_hash": "97147c746b347c763db3013aef271c1ce5e647ec4e694a61e16713410baca030",
   "key_id": "release-2026-01",
-  "generated_at": "2026-10-21T10:26:51Z",
-  "root": "343c83f6ade3290e3a452d54d5d841e21a64f8396098f90f3dd542ac10503c76",
+  "generated_at": "2026-10-21T10:40:06Z",
+  "root": "93330b45ba53c39139860f89fd64fe31896737572f0289e5b29ab14ac988db71",
   "files": [
     {
       "path": "agent_boot.py",
@@ -158,8 +158,8 @@
     },
     {
       "path": "project/core/agent_guard/__init__.py",
-      "sha256": "b2062fc708f09615110424027d05b0c6abbb675aa15fb7f5fc6043b748aa9297",
-      "size": 1102,
+      "sha256": "974e0aae7cba70c14835aac6eae83632b25d576fa8a341aadcfbc07b615a66d8",
+      "size": 1116,
       "mode": "100644",
       "notice_count": 1
     },
@@ -197,6 +197,13 @@
       "size": 2267,
       "mode": "100644",
       "notice_count": 1
+    },
+    {
+      "path": "project/core/agent_guard/points.py",
+      "sha256": "6f8ec3369f4f472abb72788c36cf72f4548092df6749b5db4c7a13a33c71b6bf",
+      "size": 10523,
+      "mode": "100644",
+      "notice_count": 10
     },
     {
       "path": "project/core/agent_guard/seal.py",
@@ -1866,10 +1873,10 @@
     },
     {
       "path": "project/scripts/agent_notice.py",
-      "sha256": "12f06e3a50f91fb90b6f213a5b396ace7abd96d81e20e7fccb599301dddc46bc",
-      "size": 9034,
+      "sha256": "ba55278f62d8d6b87d20f0cac36144f2a3974ddb9988ed5368ce314746427938",
+      "size": 11170,
       "mode": "100644",
-      "notice_count": 4
+      "notice_count": 5
     },
     {
       "path": "project/scripts/agent_repair.py",
