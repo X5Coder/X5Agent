@@ -1,13 +1,13 @@
 {
   "schema": "x5-agent-manifest/1",
-  "version": "0.85.0",
-  "commit": "463e364e3e0444cd91a3559ab64719e75bee7c8d",
-  "build": "463e364e3e0444cd91a3559ab64719e75bee7c8d",
+  "version": "0.86.0",
+  "commit": "429ec1a7a1a4674aa2adab397b328dacb8d10a5c",
+  "build": "429ec1a7a1a4674aa2adab397b328dacb8d10a5c",
   "release_key_id": "release-2026-01",
   "policy_hash": "97147c746b347c763db3013aef271c1ce5e647ec4e694a61e16713410baca030",
   "key_id": "release-2026-01",
-  "generated_at": "2026-10-21T10:40:06Z",
-  "root": "93330b45ba53c39139860f89fd64fe31896737572f0289e5b29ab14ac988db71",
+  "generated_at": "2026-10-21T10:54:12Z",
+  "root": "1b5e3249feb11fab79b131974f559b3f7586869eb78ce061e9163c9ac548043f",
   "files": [
     {
       "path": "agent_boot.py",
@@ -123,17 +123,17 @@
     },
     {
       "path": "project/core/agent/loop/dispatcher.py",
-      "sha256": "a4728c632f58b1d12847240036eba1145ebb0f3924f46529f7f0418c8b3a3d15",
-      "size": 14020,
+      "sha256": "6814bca9d26a29402b716a68ba79401c0fe31e1cc883517ab1928103cc4e9a84",
+      "size": 15885,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/agent/loop/engine.py",
-      "sha256": "f5ebe49da28cc663345ebf0d88cbda085fb8ee96c0d8990ecb05a17703004657",
-      "size": 99700,
+      "sha256": "30dc8f6bc3aad51a84a7a4c93a95e4fd1fadbf259cabe7ffa332ac31bd39bec6",
+      "size": 102846,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/agent/memory/__init__.py",
@@ -473,10 +473,10 @@
     },
     {
       "path": "project/core/scheduler/engine.py",
-      "sha256": "950f5a72b7420c41ab1618a9c2ca00c03e24022b51059c4181d753ff8b9c6122",
-      "size": 13540,
+      "sha256": "ea4a65c5f7d30199f0e9dad659fb9191f63349aaaef42eaea0ccbce12e97619e",
+      "size": 15445,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/scheduler/session.py",
@@ -494,10 +494,10 @@
     },
     {
       "path": "project/core/studio/api.py",
-      "sha256": "6a17a8009a1727f6ae0ae9f30c527b5682e5d7602d9aea084e6827bb9b709d5d",
-      "size": 39654,
+      "sha256": "faf7d92114d50d3b5494ed67b7bc83577f94723038d9340777383d815d717211",
+      "size": 43175,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 3
     },
     {
       "path": "project/core/studio/assetfetch.py",
@@ -900,10 +900,10 @@
     },
     {
       "path": "project/core/trigger/engine.py",
-      "sha256": "578edd736a27fca07ce3ffb68d7b8601783fbe41c3fbb2e5b2e9a2822b6e1a75",
-      "size": 23226,
+      "sha256": "e7cbdedd6d0c9370dfbf3d528acb015dbb0bceb6c8016eef585a946f647adc9e",
+      "size": 25405,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/core/trigger/session.py",
@@ -935,10 +935,10 @@
     },
     {
       "path": "project/gateway/dispatch.py",
-      "sha256": "809b5d7ee9bc4f8be226110be9c9765be789dfd77a11b1e27ab48dd1c125616f",
-      "size": 46129,
+      "sha256": "32777c54d1ae5f6b037aa5a2210337af4f72da21325589203048ab2fc813c03d",
+      "size": 48321,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 2
     },
     {
       "path": "project/gateway/service.py",
@@ -2321,8 +2321,8 @@
     },
     {
       "path": "updates.json",
-      "sha256": "0e70a1d4ae02291af73b14a984bdb7af5810304de97d03c8bbded7eb8c311b34",
-      "size": 57906,
+      "sha256": "1e6fdd0468251a7227da34bfb7de76a3be2744bfbcd7cd09d1575028596fdeac",
+      "size": 58344,
       "mode": "100644",
       "notice_count": 0
     }

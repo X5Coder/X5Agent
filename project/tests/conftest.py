@@ -27,3 +27,16 @@ if not os.environ.get("X5_LICENSE_STATE_PATH"):
     os.environ["X5_LICENSE_STATE_PATH"] = os.path.join(
         tempfile.mkdtemp(prefix="x5-license-test-"), "license.json"
     )
+
+# Tests do not boot through agent_boot.py, and a few suites execute tools at
+# import time (before any fixture can run). Relax ONLY the official-launch
+# check for this pytest process; test_agent_points still monkeypatches it to
+# prove the refusal paths, and licensing has its own bypass above.
+from core.agent_guard import points as _test_points
+
+_test_points._require_official = lambda: None
+
+# Module-level test bodies run before PYTEST_CURRENT_TEST exists, so the
+# licensing bypass flag alone is not enough during collection. The gate itself
+# is covered in test_agent_points; keep tool tests focused on their own logic.
+_test_points._license_gate = lambda: (True, "")

@@ -1389,16 +1389,16 @@ Status: core + service generator implemented in `0.84.0` (`core/agent_guard/heal
 ### Phase 3 — Distribution and notice
 
 Status: notice tool + CI/hook gate implemented in `0.84.0`; the distributed
-guard API (`points.py`) is implemented, but the 80 per-function guard calls
-(server middleware, dispatcher/engine/gateway/scheduler/trigger/studio) are not
-injected yet.
+guard API (`points.py`) and its runtime wiring through the agent loop, tool
+dispatcher, gateway, scheduler, trigger, and studio are implemented. Server
+middleware and the 80 generated per-function guards are still pending.
 
 - [x] `scripts/agent_notice.py` inject/verify (exact text, unique stars/number, shebang/CRLF preserved, JSON refused)
 - [x] pre-commit hook (`.githooks/pre-commit`, opt in with `git config core.hooksPath .githooks`)
 - [x] GitHub Action (`.github/workflows/protection.yml`: signed manifest + notice verify)
 - [x] `core/agent_guard/points.py` (O(1) require_tool/loop_guard/action_guard/local_guard; fixed fail-closed `GuardRefusal`; no file/network/user-data access)
 - [ ] server middleware
-- [ ] dispatcher, engine, gateway, scheduler, trigger, studio
+- [x] dispatcher, engine, gateway, scheduler, trigger, studio
 - [ ] `scripts/agent_inject.py` for 80 guards
 - [ ] exact protected-code notice above every protected function/block
 
