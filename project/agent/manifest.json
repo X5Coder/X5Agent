@@ -1,18 +1,18 @@
 {
   "schema": "x5-agent-manifest/1",
   "version": "0.84.0",
-  "commit": "31b73b36b605c7560b45150252a3525055f3d512",
-  "build": "31b73b36b605c7560b45150252a3525055f3d512",
+  "commit": "baedb70b21ebeae668637410117fb2542f70c1ea",
+  "build": "baedb70b21ebeae668637410117fb2542f70c1ea",
   "release_key_id": "release-2026-01",
   "policy_hash": "97147c746b347c763db3013aef271c1ce5e647ec4e694a61e16713410baca030",
   "key_id": "release-2026-01",
-  "generated_at": "2026-10-21T10:16:42Z",
-  "root": "b3d97ed7ce99b3dd059d3b3427ee68d6a59b3865d67a8e7494384616dcb7964f",
+  "generated_at": "2026-10-21T10:18:57Z",
+  "root": "e42567b46e024f24a128db235d93886bf14d13dcb73d9de99c993bb104fd45e4",
   "files": [
     {
       "path": "agent_boot.py",
-      "sha256": "c3cd4fc73f359197180c84974311a6a7c1930e86bae41819b5615104a4fe8eeb",
-      "size": 10701,
+      "sha256": "8ef85bdbbd77e11aabad35cd21af17c947a89fe6551585fb8b5f52b6d686b387",
+      "size": 11026,
       "mode": "100644",
       "notice_count": 3
     },
@@ -1866,8 +1866,8 @@
     },
     {
       "path": "project/scripts/agent_repair.py",
-      "sha256": "15fa070d37d968de61a8aa88e43a7b7c594e42efc1b1dbda2c196613dcb04405",
-      "size": 3306,
+      "sha256": "c82984df2b4b20464c6184ba1e174d782861b4702c7a2a7c057283b5a0c70a74",
+      "size": 3612,
       "mode": "100644",
       "notice_count": 1
     },

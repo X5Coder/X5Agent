@@ -26,28 +26,22 @@ for entry in (str(ROOT), str(PROJECT)):
 
 try:
     import agent_boot
-
-    agent_boot._restore_guard_files()
 except Exception:
-    pass
+    agent_boot = None
 
-try:
-    from core.agent_guard import heal, trust  # noqa: E402
-except Exception as exc:
-    print(
-        json.dumps(
-            {
-                "ok": False,
-                "repaired": [],
-                "quarantined": [],
-                "failed": [],
-                "safe_mode": True,
-                "reason": f"guard bootstrap failed: {type(exc).__name__}",
-            },
-            ensure_ascii=False,
-        )
+
+def _refusal(reason: str) -> str:
+    return json.dumps(
+        {
+            "ok": False,
+            "repaired": [],
+            "quarantined": [],
+            "failed": [],
+            "safe_mode": True,
+            "reason": reason,
+        },
+        ensure_ascii=False,
     )
-    raise SystemExit(1)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -62,14 +56,30 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    root = Path(args.root).resolve() if args.root else trust.repo_root()
+    root = Path(args.root).resolve() if args.root else ROOT
+    if agent_boot is not None:
+        try:
+            agent_boot._restore_guard_files(root)
+        except Exception:
+            pass
+    try:
+        from core.agent_guard import heal, trust  # noqa: E402
+    except Exception as exc:
+        if not args.quiet:
+            print(_refusal(f"guard bootstrap failed: {type(exc).__name__}"))
+        return 1
     agent_root = heal.agent_data_root(root)
 
     if args.status:
         print(json.dumps(heal.read_safe_mode(agent_root), ensure_ascii=False))
         return 0 if not heal.read_safe_mode(agent_root)["safe_mode"] else 1
 
-    repair = heal.default_repair(root)
+    try:
+        repair = heal.default_repair(root)
+    except trust.TrustError as exc:
+        if not args.quiet:
+            print(_refusal(f"trust verification refused: {exc}"))
+        return 1
     if args.snapshot:
         count = heal.create_snapshot(root, repair.snapshot_dir, repair.manifest)
         if not args.quiet:
