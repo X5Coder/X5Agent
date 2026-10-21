@@ -191,3 +191,24 @@ def test_studio_refuses_before_building_context(monkeypatch) -> None:
     assert status == 403
     assert body["code"] == "unsupported_launch"
     assert body["error"] == "legacy"
+
+
+def test_server_guard_refuses_a_tampered_tree(monkeypatch) -> None:
+    _official(monkeypatch)
+    monkeypatch.setattr(
+        points,
+        "_seal_gate",
+        lambda: (_ for _ in ()).throw(points.GuardRefusal("seal_failed", "tampered")),
+    )
+
+    with pytest.raises(points.GuardRefusal) as caught:
+        points.server_guard()
+
+    assert caught.value.code == "seal_failed"
+
+
+def test_server_guard_accepts_a_verified_install(monkeypatch) -> None:
+    _official(monkeypatch)
+    monkeypatch.setattr(points, "_seal_gate", lambda: None)
+
+    points.server_guard()

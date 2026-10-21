@@ -1,13 +1,13 @@
 {
   "schema": "x5-agent-manifest/1",
   "version": "0.86.0",
-  "commit": "429ec1a7a1a4674aa2adab397b328dacb8d10a5c",
-  "build": "429ec1a7a1a4674aa2adab397b328dacb8d10a5c",
+  "commit": "1f9273d0c194a1853f3a4be62c1eb423790b7f85",
+  "build": "1f9273d0c194a1853f3a4be62c1eb423790b7f85",
   "release_key_id": "release-2026-01",
   "policy_hash": "97147c746b347c763db3013aef271c1ce5e647ec4e694a61e16713410baca030",
   "key_id": "release-2026-01",
-  "generated_at": "2026-10-21T10:54:12Z",
-  "root": "1b5e3249feb11fab79b131974f559b3f7586869eb78ce061e9163c9ac548043f",
+  "generated_at": "2026-10-21T11:04:26Z",
+  "root": "d145ca91469f59e7f8663897d20bf2d748ddcc5dfd95e0e7de1c4ee5021adf56",
   "files": [
     {
       "path": "agent_boot.py",
@@ -200,10 +200,10 @@
     },
     {
       "path": "project/core/agent_guard/points.py",
-      "sha256": "6f8ec3369f4f472abb72788c36cf72f4548092df6749b5db4c7a13a33c71b6bf",
-      "size": 10523,
+      "sha256": "c691af36793d6b6da8f808c976264bfea3c86f50bf846587d3d056a5ff5dafdc",
+      "size": 13768,
       "mode": "100644",
-      "notice_count": 10
+      "notice_count": 12
     },
     {
       "path": "project/core/agent_guard/seal.py",
@@ -2251,10 +2251,10 @@
     },
     {
       "path": "project/web/server/server.py",
-      "sha256": "54350f90081041446c9d9fba47d0934b03ac69f582730e66a3111f4bcfd22258",
-      "size": 302963,
+      "sha256": "3d2bdea38349f4ed91c88dab0131c1fdb34a463762d0f9d0270872b608c18955",
+      "size": 309957,
       "mode": "100644",
-      "notice_count": 0
+      "notice_count": 4
     },
     {
       "path": "project/web/studio-pdf/dist/assets/babel-BRIS6Hqk.js",
@@ -2321,8 +2321,8 @@
     },
     {
       "path": "updates.json",
-      "sha256": "1e6fdd0468251a7227da34bfb7de76a3be2744bfbcd7cd09d1575028596fdeac",
-      "size": 58344,
+      "sha256": "fcc1fe82b328869132bb7691a78fc685d25f2b9b1add563d6eb9942286a53d73",
+      "size": 58890,
       "mode": "100644",
       "notice_count": 0
     }

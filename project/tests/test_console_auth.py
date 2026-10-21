@@ -266,6 +266,30 @@ def _request(port: int, method: str, path: str, body: dict | None = None,
     return head_raw, body_raw
 
 
+def test_server_guard_blocks_work_but_allows_login(monkeypatch):
+    """Every HTTP request passes the guard; login/status stay reachable."""
+    from core.agent_guard import points
+
+    monkeypatch.setattr(ca, "is_setup", lambda: True)
+    monkeypatch.setattr(ca, "session_valid", lambda token: bool(token))
+    monkeypatch.setattr(
+        points,
+        "server_guard",
+        lambda: (_ for _ in ()).throw(
+            points.GuardRefusal("seal_failed", "Protected code verification failed.")
+        ),
+    )
+    httpd, port = _boot(monkeypatch)
+    try:
+        head, _body = _request(port, "GET", "/api/dashboard", cookie="x5sess=ok")
+        assert b"403" in head.split(b"\r\n")[0], head[:200]
+        head, _body = _request(port, "GET", "/api/auth/status")
+        assert b"200" in head.split(b"\r\n")[0], head[:200]
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
 def test_setup_registers_the_license_account_first(tmp_path, monkeypatch):
     """A console owner is only created when the license server accepted it."""
     import json

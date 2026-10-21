@@ -40,3 +40,4 @@ _test_points._require_official = lambda: None
 # licensing bypass flag alone is not enough during collection. The gate itself
 # is covered in test_agent_points; keep tool tests focused on their own logic.
 _test_points._license_gate = lambda: (True, "")
+_test_points._seal_gate = lambda: None
