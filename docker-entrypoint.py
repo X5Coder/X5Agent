@@ -226,10 +226,13 @@ def main() -> None:
     ensure_dirs()
     check_browser_engine()
     os.chdir(PROJECT_ROOT)
-    cmd = [sys.executable, "-m", "web.server.server",
-           "--host", "0.0.0.0", "--port", "7777"]
+    boot = os.path.join(APP_ROOT, "agent_boot.py")
+    if not os.path.isfile(boot):
+        _log(f"official launcher missing: {boot}")
+        raise SystemExit(2)
+    os.environ["X5_PORT"] = "7777"
     _log("console: http://localhost:7777/ (container port 7777 is published)")
-    os.execv(sys.executable, cmd)
+    os.execv(sys.executable, [sys.executable, boot])
 
 
 if __name__ == "__main__":

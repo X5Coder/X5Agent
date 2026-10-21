@@ -1,10 +1,10 @@
-"""Installer safety: ordered output, a clean owner prompt, honest dep checks.
+"""Installer safety: ordered output, browser first-run, honest dep checks.
 
 Locks the flow the user sees: every heavy step (dependencies, embedding
-download, browser check, firewall) finishes first, then the owner email +
-password prompt appears on a clean screen. Block-buffered stdout used to
-flush AFTER the prompt, so the download output looked like it swallowed the
-prompt and the email question "disappeared".
+download, browser check, firewall) finishes first. A normal first run creates
+the console account in the browser, so no terminal prompt appears; explicit
+--email/--password still gets a clean prompt. The final screen is the X5 logo
+and exactly one console link, printed after the server is listening.
 
 Also locks the dependency check: it must run in a FRESH interpreter. Checking
 in-process after pip replaced numpy/scipy reported a healthy install as
@@ -139,26 +139,28 @@ def test_clear_screen_safe_without_a_terminal():
 
 # --- flow order -----------------------------------------------------------
 
-def test_owner_prompt_is_the_last_thing_before_launch():
-    """Download/resources/firewall finish first; the console starts after."""
+def test_first_run_owner_is_created_in_the_browser():
+    """No terminal prompt by default; heavy steps finish, then the app starts."""
     source = INSTALL_PY.read_text(encoding="utf-8")
     main_body = source[source.index("def main("):]
     resources = main_body.index("ensure_resources(")
     firewall = main_body.index("ensure_firewall(")
-    prompt = main_body.index("ask_credentials(")
+    owner_gate = main_body.index("if args.email or args.password:")
     launch = main_body.index("launch_detached")
-    assert resources < prompt, "embedding download must finish before the prompt"
-    assert firewall < prompt, "firewall step must finish before the prompt"
-    assert prompt < launch, "the console starts only after the owner is set"
+    assert resources < owner_gate, "embedding download must finish first"
+    assert firewall < owner_gate, "firewall step must finish first"
+    assert owner_gate < launch, "the console starts after the optional owner step"
+    assert "ask_credentials(email=args.email" in main_body
+    assert "ask_credentials()" not in main_body, "never prompt without explicit credentials"
 
 
 def test_prompt_line_survives_a_pipe_and_shows_the_step():
-    """ask_credentials clears the screen, prints 6/6, then waits on stdin."""
+    """Explicit --email/--password still gets a clean prompt."""
     source = INSTALL_PY.read_text(encoding="utf-8")
     body = source[source.index("def ask_credentials("):]
     body = body[:body.index("\ndef ", 10)]
     assert "_clear_screen()" in body
-    assert '"6/6 console owner"' in body
+    assert '"console owner (automation)"' in body
     assert body.index("_clear_screen()") < body.index('input("  email: ")')
     assert body.index('input("  email: ")') < body.index("_read_password()")
 
@@ -351,10 +353,9 @@ def test_fetch_worker_is_valid_python_and_never_in_process():
     assert "import ensure_embedding_model" not in body
 
 
-# --- completion screen: the logo, then the two links ----------------------
+# --- completion screen: the logo, then exactly one link -------------------
 
-LOCAL_URL = "http://127.0.0.1:7777/"
-PUBLIC_URL = "http://13.140.164.29:7777/"
+UI_URL = "http://13.140.164.29:7777/"
 _CONTROL_RE = re.compile(r"\033\]8;;[^\033]*\033\\|\033\[[0-9;]*m")
 
 
@@ -367,26 +368,23 @@ def _completion_output(tty: bool) -> str:
     original = sys.stdout
     sys.stdout = fake  # type: ignore[assignment]
     try:
-        install.print_completion(LOCAL_URL, PUBLIC_URL)
+        install.print_completion(UI_URL)
     finally:
         sys.stdout = original
     return fake.getvalue()
 
 
-def test_completion_shows_the_logo_then_both_links(monkeypatch):
+def test_completion_shows_the_logo_then_one_link(monkeypatch):
     monkeypatch.delenv("NO_COLOR", raising=False)
     out = _completion_output(tty=True)
     assert "\033[38;2;" in out, "a terminal gets colour"
     plain = _completion_text(tty=True)
     assert install._LOGO_ART[0] in plain, "the X5 logo must be printed"
     assert "A G E N T" in plain, "the wordmark must be printed"
-    lines = plain.splitlines()
-    public = next(i for i, line in enumerate(lines) if PUBLIC_URL in line)
-    local = next(i for i, line in enumerate(lines) if LOCAL_URL in line)
-    assert public < local, "public link first, local link second"
-    assert lines[public].strip().startswith("Public"), "the public line is labelled"
-    assert lines[local].strip().startswith("Local"), "the local line is labelled"
-    assert plain.count("http://") == 2, "only the two links belong under the logo"
+    links = [line for line in plain.splitlines() if UI_URL in line]
+    assert len(links) == 1, "exactly one console link under the logo"
+    assert links[0].strip() == UI_URL, "no labels, no duplicate local link"
+    assert plain.count("http://") == 1, "only the UI link belongs under the logo"
 
 
 def test_logo_is_white_and_carries_no_tagline(monkeypatch):
@@ -399,19 +397,18 @@ def test_logo_is_white_and_carries_no_tagline(monkeypatch):
     assert "─────" not in plain and "─────" not in plain, "no divider line"
 
 
-def test_completion_links_are_ctrl_clickable_on_a_terminal(monkeypatch):
+def test_completion_link_is_ctrl_clickable_on_a_terminal(monkeypatch):
     monkeypatch.delenv("NO_COLOR", raising=False)
     out = _completion_output(tty=True)
-    assert f"\033]8;;{PUBLIC_URL}\033\\" in out, "public link must be a terminal hyperlink"
-    assert f"\033]8;;{LOCAL_URL}\033\\" in out, "local link must be a terminal hyperlink"
-    assert out.count("\033]8;;") == 4, "two links = two open + two close sequences"
+    assert f"\033]8;;{UI_URL}\033\\" in out, "the link must be a terminal hyperlink"
+    assert out.count("\033]8;;") == 2, "one link = one open + one close sequence"
 
 
 def test_completion_is_plain_when_not_a_terminal(monkeypatch):
     monkeypatch.delenv("NO_COLOR", raising=False)
     out = _completion_output(tty=False)
     assert "\033" not in out, "no escape codes when piped (curl|bash logs)"
-    assert install._LOGO_ART[0] in out and PUBLIC_URL in out and LOCAL_URL in out
+    assert install._LOGO_ART[0] in out and UI_URL in out
 
 
 def test_completion_respects_no_color(monkeypatch):
@@ -424,14 +421,16 @@ def test_completion_falls_back_to_plain_text_when_art_cannot_be_encoded():
     assert install.logo_banner().startswith("  ")
 
 
-def test_main_always_prints_the_completion_screen():
+def test_main_prints_the_completion_screen_only_after_a_successful_start():
     source = INSTALL_PY.read_text(encoding="utf-8")
     body = source[source.index("def main("):]
-    assert body.count("print_completion(") == 1
-    assert body.index("print_completion(") < body.index("if args.run:")
+    assert body.count("print_completion(") == 3, (
+        "foreground, detached success, and the install-only path")
+    assert body.index("print_completion(") > body.index("if args.run:"), (
+        "the logo/link must appear after the checks and the start attempt")
     assert "Web Server (Local)" not in body, "the old boxed report must be gone"
-    assert "starting console now" not in body, "the end screen stays logo + links only"
-    assert "console running now" not in body, "the end screen stays logo + links only"
+    assert "starting console now" not in body, "the end screen stays logo + link only"
+    assert "console running now" not in body, "the end screen stays logo + link only"
 
 
 def test_port_restart_is_one_short_line():
@@ -448,6 +447,40 @@ def test_installer_delegates_credential_rules():
     assert "email_problem" in source and "password_problem" in source
     assert "EMAIL_RE" not in source, "one owner for the owner-credential rules"
     assert "English" in source, "the prompt states the rules"
+
+
+def test_x5agent_starts_through_the_official_launcher():
+    """Both foreground and detached starts must use agent_boot.py."""
+    from scripts import cli
+
+    assert cli._agent_boot().name == "agent_boot.py"
+    source = (PROJECT_ROOT / "scripts" / "cli.py").read_text(encoding="utf-8")
+    body = source[source.index("def launch_detached("):]
+    assert "boot = _agent_boot()" in body
+    assert "cmd = [sys.executable, str(boot)]" in body
+    assert '"web.server.server"' not in body
+    assert 'env["X5_PORT"]' in body
+    main_body = source[source.index("def main("):]
+    assert "os.execv(sys.executable, [sys.executable, str(boot)])" in main_body
+    assert "web.server.server" not in body or "pkill" in main_body
+
+
+def test_installer_foreground_starts_through_agent_boot():
+    source = INSTALL_PY.read_text(encoding="utf-8")
+    body = source[source.index("def main("):]
+    assert "from scripts.cli import _agent_boot as _boot_path" in body
+    assert "os.execv(sys.executable, [sys.executable, str(boot)])" in body
+    assert '"-m", "web.server.server"' not in body
+
+
+def test_docker_and_service_start_through_agent_boot():
+    docker = (PROJECT_ROOT.parent / "docker-entrypoint.py").read_text(encoding="utf-8")
+    assert 'os.path.join(APP_ROOT, "agent_boot.py")' in docker
+    assert 'os.environ["X5_PORT"] = "7777"' in docker
+    assert '"-m", "web.server.server"' not in docker
+    unit = (PROJECT_ROOT / "scripts" / "x5console.service").read_text(encoding="utf-8")
+    assert "ExecStart=/usr/bin/python3 /opt/X5Agent/agent_boot.py" in unit
+    assert "web.server.server" not in unit
 
 
 def test_stop_server_quiet_flag_contract(monkeypatch):

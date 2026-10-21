@@ -1,7 +1,12 @@
 {
-  "version": "0.88.0",
-  "description": "Silent repair now has its third fallback: the central license server exposes a bounded, public read-only mirror of protected files at the commit in the signed manifest, so a client can still repair when GitHub raw is unreachable. Choosing the free trial right after signup is now idempotent, and the VPS database and keys were verified on the persistent volume.",
+  "version": "0.89.0",
+  "description": "One install/update command and one run command now share the official launcher: setup.sh installs or updates, x5agent starts the console, and every start passes through agent_boot.py so protected files are verified and repaired first. The installer finishes the embedding/GPU checks, then prints only the X5 logo and one console link; a normal first run creates the account in the browser instead of the terminal.",
   "features": [
+    "setup.sh is the single install/update command and x5agent is the single run command; both start through agent_boot.py, never the web server directly.",
+    "x5agent and install.py --run/--foreground now set the port and launch agent_boot.py, so the protected-file check and silent repair happen before any application import.",
+    "Docker and the generated x5console.service also start through agent_boot.py, so containers and services get the same check.",
+    "The installer keeps the embedding-model download and GPU/CPU detection, then prints only the X5 logo and one console link after the server is listening.",
+    "A normal first run no longer asks for an email and password in the terminal: the console's first browser visit asks you to create the account. --email/--password (or X5_EMAIL/X5_PASSWORD) remains only for automation.",
     "New distributed guard API: one fixed, fail-closed refusal for the official-launch and local-license checks, usable by every runtime entry point without file scans or network calls.",
     "The agent loop now checks the guard at start, before every model call, and before every tool batch; removing one check cannot bypass the others.",
     "The tool dispatcher, gateway, scheduler, trigger, and studio entry points each refuse blocked work before loading a tool, job, skill, or studio context.",

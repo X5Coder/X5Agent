@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # X5Agent one-liner setup (Linux / Mac).
-# Installs + starts the console PERSISTENTLY in a single command
-# (detached: safe to close SSH; re-running kills the old server and
-# starts a fresh one on the same port 7777; stop with `x5agent --off`).
+# THE install/update command: installs + starts the console PERSISTENTLY in a
+# single command through agent_boot.py (protected-file check first; detached:
+# safe to close SSH; re-running updates and restarts on the same port 7777).
+# First visit creates the account in the browser. Stop with `x5agent --off`.
 #
-# The repository is PRIVATE, so the clone needs a read-only GitHub token.
-# Pass it in the environment (never in the URL of your shell history):
+# The repository is public, so no token is needed. A read-only token is still
+# supported for private mirrors (never put it in your shell history):
 #   X5_INSTALL_TOKEN=ghp_xxx bash setup.sh
-#   X5_INSTALL_TOKEN=ghp_xxx curl -fsSL https://x5agent.com/setup.sh | bash
-# Without a token the public URL is still tried (works for a public mirror).
 # The token is used for one clone/pull and then removed from the git remote.
 #
 # With options (passed through to project/install.py):
@@ -51,8 +50,7 @@ else
   if ! git clone --depth 1 "$AUTH_URL" "$DIR"; then
     echo "[setup] ERROR: clone failed." >&2
     if [ -z "$TOKEN" ]; then
-      echo "[setup] The repository is private. Run again with a read-only token:" >&2
-      echo "        X5_INSTALL_TOKEN=<github-token> bash setup.sh" >&2
+      echo "[setup] Check your network and that $REPO_SLUG is reachable." >&2
     else
       echo "[setup] Check that the token is valid and can read $REPO_SLUG." >&2
     fi
@@ -88,9 +86,9 @@ done
 
 cd "$DIR/project"
 # stdin fix (the classic curl|bash problem): when launched as
-# `curl ... | bash`, this shell's stdin is the finished pipe (EOF), so the
-# installer's interactive prompts (email/password) would die instantly.
-# Recover the real terminal for prompts when there is one behind the pipe.
+# `curl ... | bash`, this shell's stdin is the finished pipe (EOF). The normal
+# flow creates the account in the browser, but explicit --email/--password
+# prompts still need a real terminal, so recover it when one exists.
 if [ -t 0 ]; then
   TTY_IN="/dev/stdin"    # already a terminal, keep it
 elif [ -e /dev/tty ]; then
