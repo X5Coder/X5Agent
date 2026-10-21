@@ -1,9 +1,24 @@
 from __future__ import annotations
 
+import importlib.util
+import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
 from core.agent_guard import heal, manifest as manifest_module
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _agent_boot_module():
+    path = _repo_root() / "agent_boot.py"
+    spec = importlib.util.spec_from_file_location("agent_boot_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _policy() -> dict:
@@ -174,3 +189,49 @@ def test_repair_refuses_oversized_remote_file(tmp_path):
 
     assert result.ok is False
     assert (root / "project" / "core" / "alpha.py").read_text(encoding="utf-8") == "tampered\n"
+
+
+def test_bootstrap_restores_missing_guard_file_from_snapshot(tmp_path, monkeypatch):
+    source = _repo_root()
+    target = tmp_path / "repo"
+    shutil.copytree(source / "project" / "agent", target / "project" / "agent")
+    shutil.copytree(
+        source / "project" / "core" / "agent_guard",
+        target / "project" / "core" / "agent_guard",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    snapshot = target / "X5Agent" / "Data" / "agent" / "snapshot" / "project" / "core" / "agent_guard"
+    shutil.copytree(target / "project" / "core" / "agent_guard", snapshot)
+    missing = target / "project" / "core" / "agent_guard" / "trust.py"
+    missing.unlink()
+
+    module = _agent_boot_module()
+    monkeypatch.setattr(module, "ROOT", target)
+
+    assert module._restore_guard_files() is True
+    assert missing.read_bytes() == (
+        source / "project" / "core" / "agent_guard" / "trust.py"
+    ).read_bytes()
+
+
+def test_bootstrap_refuses_a_tampered_manifest(tmp_path, monkeypatch):
+    source = _repo_root()
+    target = tmp_path / "repo"
+    shutil.copytree(source / "project" / "agent", target / "project" / "agent")
+    shutil.copytree(
+        source / "project" / "core" / "agent_guard",
+        target / "project" / "core" / "agent_guard",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    manifest_path = target / "project" / "agent" / "manifest.json"
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    data["root"] = "0" * 64
+    manifest_path.write_text(json.dumps(data), encoding="utf-8")
+    missing = target / "project" / "core" / "agent_guard" / "trust.py"
+    missing.unlink()
+
+    module = _agent_boot_module()
+    monkeypatch.setattr(module, "ROOT", target)
+
+    assert module._restore_guard_files() is False
+    assert not missing.exists()

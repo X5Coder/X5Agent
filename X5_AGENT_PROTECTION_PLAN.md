@@ -1383,6 +1383,7 @@ Status: core + service generator implemented in `0.84.0` (`core/agent_guard/heal
 - [x] SilentRepair and queue (snapshot -> pinned GitHub -> license mirror, hash-checked atomic writes, bounded 3 attempts/10s/8MB/64MB)
 - [x] Local Safe Mode (`Data/agent/safe_mode.json`, quiet `Checking installation`)
 - [x] OS service generator (`agent_service.py`: systemd user/system, launchd, Windows scheduled task; always starts `agent_boot.py`, `--print/--install/--uninstall/--status`)
+- [x] Root A guard bootstrap (`agent_boot._restore_guard_files()`: verifies the signed policy+manifest with the pinned fingerprint, restores missing/changed `core/agent_guard/` files from the local snapshot or the pinned GitHub commit before importing any guard; `agent_repair.py` uses the same bootstrap so a deleted `trust.py` cannot break repair)
 - [ ] automatic service enable on Linux/macOS (the operator runs the printed enable command)
 
 ### Phase 3 — Distribution and notice

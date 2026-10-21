@@ -1,20 +1,20 @@
 {
   "schema": "x5-agent-manifest/1",
   "version": "0.84.0",
-  "commit": "4d4f174d3907688db03108be5e8a044192fb4f37",
-  "build": "4d4f174d3907688db03108be5e8a044192fb4f37",
+  "commit": "31b73b36b605c7560b45150252a3525055f3d512",
+  "build": "31b73b36b605c7560b45150252a3525055f3d512",
   "release_key_id": "release-2026-01",
   "policy_hash": "97147c746b347c763db3013aef271c1ce5e647ec4e694a61e16713410baca030",
   "key_id": "release-2026-01",
-  "generated_at": "2026-10-21T10:08:44Z",
-  "root": "b95521a9bbf63d70944c75167b9a2b179289850294ced542f2e8fd761f16f94d",
+  "generated_at": "2026-10-21T10:16:42Z",
+  "root": "b3d97ed7ce99b3dd059d3b3427ee68d6a59b3865d67a8e7494384616dcb7964f",
   "files": [
     {
       "path": "agent_boot.py",
-      "sha256": "f2b7b1f603923008f6aa6212adfbddeaeb3ec21a1c95324d1436f35574159fff",
-      "size": 3464,
+      "sha256": "c3cd4fc73f359197180c84974311a6a7c1930e86bae41819b5615104a4fe8eeb",
+      "size": 10701,
       "mode": "100644",
-      "notice_count": 2
+      "notice_count": 3
     },
     {
       "path": "project/X5Browser/VERSION",
@@ -1866,8 +1866,8 @@
     },
     {
       "path": "project/scripts/agent_repair.py",
-      "sha256": "0356a5a02018c989a554183cfe310d3dca70f0324115927e64134b6503b8f507",
-      "size": 2754,
+      "sha256": "15fa070d37d968de61a8aa88e43a7b7c594e42efc1b1dbda2c196613dcb04405",
+      "size": 3306,
       "mode": "100644",
       "notice_count": 1
     },

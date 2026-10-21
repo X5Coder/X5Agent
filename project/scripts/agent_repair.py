@@ -19,10 +19,35 @@ from dataclasses import asdict
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[1]
-if str(PROJECT) not in sys.path:
-    sys.path.insert(0, str(PROJECT))
+ROOT = PROJECT.parent
+for entry in (str(ROOT), str(PROJECT)):
+    if entry not in sys.path:
+        sys.path.insert(0, entry)
 
-from core.agent_guard import heal, trust  # noqa: E402
+try:
+    import agent_boot
+
+    agent_boot._restore_guard_files()
+except Exception:
+    pass
+
+try:
+    from core.agent_guard import heal, trust  # noqa: E402
+except Exception as exc:
+    print(
+        json.dumps(
+            {
+                "ok": False,
+                "repaired": [],
+                "quarantined": [],
+                "failed": [],
+                "safe_mode": True,
+                "reason": f"guard bootstrap failed: {type(exc).__name__}",
+            },
+            ensure_ascii=False,
+        )
+    )
+    raise SystemExit(1)
 
 
 def _parser() -> argparse.ArgumentParser:
