@@ -56,7 +56,7 @@ shipped inside the client build and never copied into the desktop installer.
 - Bounds: 40-hex commit only, path must be `agent_boot.py`, `updates.json`, or
   under `project/`, no absolute/traversal/hidden paths, no secrets/databases/
   caches/archives, 300-character path cap, 8 MB file cap, 10-second timeout,
-  and the default 120 requests/minute per-address rate limit.
+  and the default 120 requests/minute per file path and address.
 - The endpoint never accepts a host or URL from the caller. It always fetches
   `https://raw.githubusercontent.com/X5Coder/X5Agent/...`, so it cannot become
   a generic proxy or SSRF primitive.
