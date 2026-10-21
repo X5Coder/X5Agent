@@ -845,7 +845,10 @@ SilentRepair:
 - Identifies Changed, Missing, and Extra files only.
 - Copies from the local signed snapshot first.
 - Then fetches from GitHub at the pinned commit.
-- Then fetches from the license-server mirror.
+- Then fetches from the license-server mirror (`GET /mirror/<commit>/<path>`:
+  40-hex commit, `agent_boot.py` or `project/` only, no secrets/databases/
+  caches, 8MB cap, 10s timeout; the server always reads the public repository,
+  never a caller-supplied URL).
 - Verifies every file hash before writing.
 - Writes atomically: temp file, then `os.replace`.
 - Never touches `X5Agent/Data`.
@@ -1383,6 +1386,7 @@ Status: core + service generator implemented in `0.84.0` (`core/agent_guard/heal
 - [x] local signed snapshot (`Data/agent/snapshot`, seeded on boot/`--snapshot`)
 - [x] delta comparison (changed/missing/extra against the signed manifest)
 - [x] SilentRepair and queue (snapshot -> pinned GitHub -> license mirror, hash-checked atomic writes, bounded 3 attempts/10s/8MB/64MB)
+- [x] license-server repair mirror (`GET /mirror/<commit>/<path>`: public repository only, strict commit/path guards, 8MB/10s bounds; deployed on `dex.awnlearn.com`)
 - [x] Local Safe Mode (`Data/agent/safe_mode.json`, quiet `Checking installation`)
 - [x] OS service generator (`agent_service.py`: systemd user/system, launchd, Windows scheduled task; always starts `agent_boot.py`, `--print/--install/--uninstall/--status`)
 - [x] Root A guard bootstrap (`agent_boot._restore_guard_files()`: verifies the signed policy+manifest with the pinned fingerprint, restores missing/changed `core/agent_guard/` files from the local snapshot or the pinned GitHub commit before importing any guard; `agent_repair.py` uses the same bootstrap so a deleted `trust.py` cannot break repair)

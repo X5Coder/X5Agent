@@ -45,6 +45,24 @@ shipped inside the client build and never copied into the desktop installer.
 - The provider itself lives in `../checkout-sandbox/` (separate deployment,
   port 8789). Dodo replaces only the checkout link and the callback.
 
+## Protected-code repair mirror (implemented)
+
+- `GET /mirror/<commit>/<path>` serves one protected source file from the
+  public `X5Coder/X5Agent` repository at the exact commit in the client's
+  signed manifest. This is the third repair fallback (`heal.py`) after the
+  local signed snapshot and `raw.githubusercontent.com`.
+- No account is needed: the client already holds the signed commit and the
+  expected SHA-256, and it verifies the bytes again before writing.
+- Bounds: 40-hex commit only, path must be `agent_boot.py` or under `project/`,
+  no absolute/traversal/hidden paths, no secrets/databases/caches/archives,
+  300-character path cap, 8 MB file cap, 10-second timeout, and the default
+  120 requests/minute per-address rate limit.
+- The endpoint never accepts a host or URL from the caller. It always fetches
+  `https://raw.githubusercontent.com/X5Coder/X5Agent/...`, so it cannot become
+  a generic proxy or SSRF primitive.
+- Responses are immutable-cached (`max-age=31536000, immutable`) because a
+  commit path never changes, with `nosniff` and a generic binary media type.
+
 ## Local run (Windows)
 
 ```powershell
@@ -78,27 +96,22 @@ touch a real database or the real key files.
 
 ## Current test deployment (VPS)
 
-- Code: `/opt/x5license` (system user `x5license`, venv at `.venv`).
-- Service: `x5license.service` (systemd), port `8788`.
-- Database: PostgreSQL 17, cluster `17/main`, `127.0.0.1:5433`, database
-  `x5license` (the default `main` cluster moved to 5433 because Docker already
-  owns 5432; nothing in Docker was touched).
-- Health: `curl http://127.0.0.1:8788/v1/health`.
-- Admin panel (the central server UI): `http://<server>:8788/` (redirects to `/admin`).
-- Logs: `journalctl -u x5license -f`; restart: `systemctl restart x5license`.
-- Change the admin password:
-  `cd /opt/x5license && sudo -u x5license -H .venv/bin/python -m app.cli create-admin --email admin@x5agent.local --password 'NEW_PASSWORD'`.
-- Backup: `pg_dump -p 5433 -U x5license x5license` plus `/opt/x5license/keys/`.
-
-**Temporary:** this test deployment binds `0.0.0.0:8788` over plain HTTP so the
-console/client can be tested from outside the VPS. Do not onboard real users
-until it sits behind TLS (a domain + reverse proxy, or a Caddy vhost) and the
-app is bound to `127.0.0.1`. Restrict `/docs` and the admin API at that point.
+- Room `4fe31a2c-9dc8-47c3-99ef-64fe46620f54`, container
+  `vr_4fe31a2c_7b12e450`, image `vpsrooms/7b12e450:latest`, internal port 8000,
+  published on `11001`, HTTPS domain `https://dex.awnlearn.com`.
+- Host code: `/vps-manager/single/4fe31a2c-9dc8-47c3-99ef-64fe46620f54/project/7b12e450-dbd1-4858-9d4b-f83b5ceb3752`
+  (the image copies `app/`; the folder is not a git checkout).
+- Persistent data: host folder
+  `/vps-manager/single/4fe31a2c-9dc8-47c3-99ef-64fe46620f54/volumes/7b12e450-dbd1-4858-9d4b-f83b5ceb3752/app-data`
+  mounted at `/app/data` — holds `license.db` (SQLite, mode 600) and `keys/`
+  (`entitlement_private.pem` 600, `entitlement_public.pem` 644). Keys and
+  database therefore survive a container rebuild; restart policy is
+  `unless-stopped`.
+- Health: `curl https://dex.awnlearn.com/v1/health`.
 
 ## Missing in this phase (next phases)
 
 - Real Dodo Payments checkout + webhook (the sandbox stands in for it today).
 - Admin 2FA (TOTP) and an audit log.
 - Trusted-proxy handling (`X-Forwarded-For`) once TLS sits in front.
-- Signed update manifests and repair packs.
 - SMTP is intentionally out of scope: signup is self-activating by design.

@@ -38,6 +38,7 @@ def test_panel_contains_no_secrets_or_credentials(client):
 
 
 def test_panel_cannot_read_accounts_without_a_token(client):
+    client.cookies.clear()
     assert client.get("/v1/admin/accounts").status_code == 401
 
 def test_root_opens_the_admin_ui(client):

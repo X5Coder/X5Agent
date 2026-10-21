@@ -81,12 +81,15 @@ def test_sandbox_purchase_activates_the_plan(client: TestClient) -> None:
     assert created["checkout_url"].startswith("http://sandbox.test:8789/pay/")
     assert created["checkout_url"].endswith(created["session_id"])
     assert created["amount_cents"] == plan["price_cents"]
+    # The sandbox has no card step: the session is already paid and active.
+    assert created["instant"] is True
+    assert created["status"] == "paid"
 
     view = client.get(
         f"/v1/sandbox/session/{created['session_id']}", headers=SANDBOX_HEADERS
     )
     assert view.status_code == 200, view.text
-    assert view.json()["status"] == "pending"
+    assert view.json()["status"] == "paid"
     assert view.json()["plan"]["name"] == "Pro Monthly"
 
     paid = client.post(
@@ -150,14 +153,15 @@ def test_sandbox_requires_its_secret(client: TestClient) -> None:
         f"/v1/sandbox/session/{created['session_id']}"
     ).status_code == 403
 
-    # A buyer cannot mark their own session paid through the console API.
+    # A buyer cannot change the session through the console API: sandbox
+    # purchases are completed by the server, and the poll only reads them.
     forged = client.post(
         "/v1/billing/checkout/status",
         json={"session_id": created["session_id"], "device_fingerprint": fingerprint},
         headers={"Authorization": f"Bearer {session['refresh_token']}"},
     )
     assert forged.status_code == 200
-    assert forged.json()["status"] == "pending"
+    assert forged.json()["status"] == "paid"
 
 
 def test_expired_and_foreign_sessions_are_refused(client: TestClient) -> None:
@@ -168,6 +172,9 @@ def test_expired_and_foreign_sessions_are_refused(client: TestClient) -> None:
     with SessionLocal() as db:
         row = db.get(CheckoutSession, created["session_id"])
         assert row is not None
+        # The sandbox completes at creation; put it back to pending so this
+        # test exercises the expiry guard of the pay endpoint itself.
+        row.status = "pending"
         row.expires_at = utcnow() - timedelta(minutes=1)
         db.commit()
 
@@ -374,29 +381,13 @@ def test_choose_paid_opens_a_checkout_then_completion_records_it(
                        return_url="http://console.test/")
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["chosen"] is False
-    checkout = body["checkout"]
-    assert checkout["session_id"]
-    assert checkout["checkout_url"].endswith(checkout["session_id"])
-    assert checkout["amount_cents"] == plan["price_cents"]
-
-    before = heartbeat(client, token, fingerprint)
-    assert before.json()["plan_chosen"] is False
-    assert before.json()["state"] == "trial"
-
-    paid = client.post(
-        "/v1/sandbox/pay",
-        json={"session_id": checkout["session_id"]},
-        headers=SANDBOX_HEADERS,
-    )
-    assert paid.status_code == 200, paid.text
-    assert paid.json()["status"] == "paid"
-
-    after = heartbeat(client, token, fingerprint)
-    assert after.status_code == 200, after.text
-    assert after.json()["plan_chosen"] is True
-    assert after.json()["state"] == "active"
-    assert after.json()["plan"] == "Pro Monthly"
+    # Sandbox has no hosted checkout: the choice and the purchase land at once.
+    assert body["chosen"] is True
+    assert body["instant"] is True
+    assert body["subscription_id"]
+    assert body["license"]["state"] == "active"
+    assert body["license"]["plan_chosen"] is True
+    assert body["license"]["plan"] == "Pro Monthly"
 
 
 def test_choose_rejects_an_unknown_plan(client: TestClient) -> None:

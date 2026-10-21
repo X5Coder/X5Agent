@@ -126,6 +126,7 @@ def test_expiry_blocks_and_extend_recovers(client):
 
 
 def test_admin_requires_token(client):
+    client.cookies.clear()
     assert client.get("/v1/admin/accounts").status_code == 401
     assert (
         client.post(
