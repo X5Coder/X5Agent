@@ -2,12 +2,14 @@ name: Build release
 
 # Compiles the source-hidden release trees for every supported platform.
 # Cross-compilation is impossible (a .so/.pyd is tied to one OS + Python ABI),
-# so each target is built on its own runner:
-#   windows-latest  -> x5agent-windows-amd64-full.zip      (Python 3.12)
-#   ubuntu-22.04    -> x5agent-linux-x86_64-full.zip       (Python 3.10, oldest LTS)
-#   ubuntu-24.04    -> x5agent-linux-x86_64-headless.zip   (Python 3.12, no console)
-#   macos-14        -> x5agent-macos-arm64-full.zip        (Python 3.12, Apple silicon)
-#   macos-13        -> x5agent-macos-x86_64-full.zip       (Python 3.12, Intel)
+# so each target is built on its own runner. The asset name always says which
+# interpreter it needs, because the compiled modules only load on that ABI:
+#   windows-x64              Python 3.12   (installer built from this one)
+#   linux-x64-ubuntu22.04    Python 3.10
+#   linux-x64-ubuntu24.04    Python 3.12
+#   linux-x64-ubuntu24.04-headless  Python 3.12 (no web console)
+#   macos-arm64              Python 3.12
+#   macos-x64                Python 3.12
 on:
   workflow_dispatch:
   push:
@@ -19,7 +21,7 @@ permissions:
 
 jobs:
   build:
-    name: ${{ matrix.label }}
+    name: ${{ matrix.tag }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -27,23 +29,27 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            label: windows-amd64-full
+            tag: windows-x64
             python: "3.12"
             flavor: full
           - os: ubuntu-22.04
-            label: linux-x86_64-full
+            tag: linux-x64-ubuntu22.04
             python: "3.10"
             flavor: full
           - os: ubuntu-24.04
-            label: linux-x86_64-headless
+            tag: linux-x64-ubuntu24.04
+            python: "3.12"
+            flavor: full
+          - os: ubuntu-24.04
+            tag: linux-x64-ubuntu24.04-headless
             python: "3.12"
             flavor: headless
           - os: macos-14
-            label: macos-arm64-full
+            tag: macos-arm64
             python: "3.12"
             flavor: full
           - os: macos-13
-            label: macos-x86_64-full
+            tag: macos-x64
             python: "3.12"
             flavor: full
 
@@ -61,6 +67,14 @@ jobs:
 
       - name: Build
         run: python project/scripts/build_release.py --out dist --flavor ${{ matrix.flavor }}
+
+      - name: Name the archive for this target
+        shell: bash
+        run: |
+          set -e
+          for f in dist/*.zip; do
+            mv "$f" "dist/x5agent-${{ matrix.tag }}.zip"
+          done
 
       - name: Verify no Python source shipped
         shell: bash
@@ -80,7 +94,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: x5agent-${{ matrix.label }}
+          name: x5agent-${{ matrix.tag }}
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 30
@@ -95,7 +109,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: x5agent-windows-amd64-full
+          name: x5agent-windows-x64
           path: dist
 
       - name: Install Inno Setup
