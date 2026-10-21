@@ -37,7 +37,7 @@ def _load_model():
         model_path.resolve().relative_to(Path(__file__).resolve().parents[2].resolve())
     except ValueError as exc:
         raise ValueError("Embedding path escapes the project directory") from exc
-    from core.aegis.model_guard import assert_safe_model_dir
+    from core.agent_guard.model_guard import assert_safe_model_dir
 
     assert_safe_model_dir(model_path)
     device = detect_device()

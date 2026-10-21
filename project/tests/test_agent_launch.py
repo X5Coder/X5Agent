@@ -5,7 +5,7 @@ import types
 
 import pytest
 
-from core.aegis import import_guard, launch_guard
+from core.agent_guard import import_guard, launch_guard
 
 
 @pytest.fixture(autouse=True)
@@ -50,7 +50,7 @@ def test_sitecustomize_is_detected(monkeypatch):
 
 
 def test_begin_launch_marks_legacy(monkeypatch):
-    monkeypatch.delenv("X5_AEGIS_BOOT", raising=False)
+    monkeypatch.delenv("X5_AGENT_BOOT", raising=False)
     monkeypatch.setattr(sys, "dont_write_bytecode", False)
 
     state = launch_guard.begin_launch("test")
@@ -62,7 +62,7 @@ def test_begin_launch_marks_legacy(monkeypatch):
 
 
 def test_begin_launch_marks_official(monkeypatch):
-    monkeypatch.setenv("X5_AEGIS_BOOT", "1")
+    monkeypatch.setenv("X5_AGENT_BOOT", "1")
     monkeypatch.setattr(sys, "dont_write_bytecode", False)
     monkeypatch.setattr(launch_guard, "detect_sitecustomize", lambda: [])
     monkeypatch.setattr(launch_guard, "_path_is_safe", lambda: True)
@@ -76,7 +76,7 @@ def test_begin_launch_marks_official(monkeypatch):
 
 
 def test_assert_official_rejects_legacy(monkeypatch):
-    monkeypatch.delenv("X5_AEGIS_BOOT", raising=False)
+    monkeypatch.delenv("X5_AGENT_BOOT", raising=False)
     launch_guard.begin_launch("test")
 
     with pytest.raises(RuntimeError):
@@ -86,7 +86,7 @@ def test_assert_official_rejects_legacy(monkeypatch):
 def test_strict_mode_rejects_legacy_main(monkeypatch):
     import main as project_main
 
-    monkeypatch.delenv("X5_AEGIS_BOOT", raising=False)
-    monkeypatch.setenv("X5_AEGIS_STRICT", "1")
+    monkeypatch.delenv("X5_AGENT_BOOT", raising=False)
+    monkeypatch.setenv("X5_AGENT_STRICT", "1")
 
     assert project_main.main() == 2

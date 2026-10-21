@@ -15,16 +15,16 @@ from pathlib import Path
 
 def main() -> int:
     try:
-        from core.aegis import launch_guard
+        from core.agent_guard import launch_guard
 
         state = launch_guard.begin_launch("main.py")
         if not state["trusted"]:
             print(
                 "[X5Agent] warning: unsupported launch mode "
-                f"(reason={state['reason']}); start with aegis_boot.py",
+                f"(reason={state['reason']}); start with agent_boot.py",
                 file=sys.stderr,
             )
-            if os.environ.get("X5_AEGIS_STRICT") == "1":
+            if os.environ.get("X5_AGENT_STRICT") == "1":
                 return 2
     except Exception:
         pass

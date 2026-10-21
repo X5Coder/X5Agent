@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from core.aegis.model_guard import assert_safe_model_dir
-from core.aegis.skill_guard import MAX_SKILL_BYTES, read_skill_text
+from core.agent_guard.model_guard import assert_safe_model_dir
+from core.agent_guard.skill_guard import MAX_SKILL_BYTES, read_skill_text
 
 
 def test_model_guard_rejects_pickle_weights(tmp_path):

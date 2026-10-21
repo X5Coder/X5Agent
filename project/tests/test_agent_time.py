@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.aegis.time_guard import ClockGuard, detect_preload, parse_server_time
+from core.agent_guard.time_guard import ClockGuard, detect_preload, parse_server_time
 
 
 def test_parse_server_time_iso_and_epoch():

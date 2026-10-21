@@ -1,0 +1,30 @@
+{
+  "schema": "x5-agent-policy/1",
+  "license_servers": [
+    "https://dex.awnlearn.com"
+  ],
+  "license_public_key_id": "license-2026-01",
+  "repo": "X5Coder/X5Agent",
+  "release_channel": "stable",
+  "update_hosts": [
+    "raw.githubusercontent.com",
+    "codeload.github.com",
+    "dex.awnlearn.com"
+  ],
+  "min_version": "0.82.0",
+  "max_manifest_age_hours": 168,
+  "offline_lease_hours": 72,
+  "key_id": "release-2026-01",
+  "release_key_id": "release-2026-01",
+  "allowed_builds": [
+    "495f628b6ca3a8169905a93192d06b5f137b12ce"
+  ],
+  "allowed_mroots": [],
+  "capability_ttl_seconds": 300,
+  "clock_rollback_tolerance_seconds": 300,
+  "safe_launch": true,
+  "allow_user_code_paths": false,
+  "allow_pickle_models": false,
+  "next_key": null,
+  "dev_overrides": false
+}

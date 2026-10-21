@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from core.aegis.skill_guard import read_skill_text
+from core.agent_guard.skill_guard import read_skill_text
 
 from .events import format_event
 

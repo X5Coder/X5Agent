@@ -40,7 +40,7 @@ except Exception:
 # that must never provide Python code. An untrusted mode still runs for
 # compatibility; licensed features consult this state before enabling.
 try:
-    from core.aegis import launch_guard
+    from core.agent_guard import launch_guard
 
     launch_guard.begin_launch("launch.py")
 except Exception:

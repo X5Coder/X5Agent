@@ -8,7 +8,7 @@ must never provide Python code. It deliberately does not read or write user
 data; persistence belongs to the licensing layer.
 
 Trusted means all of the following:
-- the process was started by ``aegis_boot.py`` (``X5_AEGIS_BOOT=1``);
+- the process was started by ``agent_boot.py`` (``X5_AGENT_BOOT=1``);
 - no ``sitecustomize``/``usercustomize`` module was injected;
 - no forbidden root is on ``sys.path``;
 - the import guard was installed.
@@ -22,7 +22,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-_BOOT_ENV = "X5_AEGIS_BOOT"
+_BOOT_ENV = "X5_AGENT_BOOT"
 _OFFICIAL = "official"
 _LEGACY = "legacy"
 _LOCK = threading.RLock()
@@ -212,7 +212,7 @@ def status() -> dict[str, Any]:
 
 
 def official_launch() -> bool:
-    """True only for a trusted ``aegis_boot.py`` launch."""
+    """True only for a trusted ``agent_boot.py`` launch."""
     return bool(status()["trusted"])
 
 
@@ -221,6 +221,6 @@ def assert_official() -> None:
     if not official_launch():
         state = status()
         raise RuntimeError(
-            "X5Agent must be started through aegis_boot.py "
+            "X5Agent must be started through agent_boot.py "
             f"(mode={state['mode']}, reason={state['reason']})"
         )

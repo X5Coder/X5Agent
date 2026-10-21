@@ -1,0 +1,19 @@
+X5Agent
+Copyright (c) 2026 X5Coder
+
+This repository is licensed under the Business Source License 1.1. See
+LICENSE for the complete terms. Production or commercial use requires a
+commercial license from X5Coder until the Change Date, after which the Change
+License (Apache License 2.0) applies to that version.
+
+The X5Agent name, the X5Coder name and the project logos are trademarks of
+X5Coder. See TRADEMARK.md. Forks and derivative distributions must not imply
+endorsement by X5Coder and must replace the project marks.
+
+Commercial licensing and feature requests:
+https://x5agent.com/community
+
+X5Agent includes third-party open-source components. Their own licenses apply
+to those components, including (without limitation) Python, ChromaDB,
+sentence-transformers, cryptography, FastAPI, React and the browser automation
+library. Third-party notices remain the property of their respective owners.

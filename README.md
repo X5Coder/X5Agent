@@ -1,11 +1,29 @@
-# X5Agent — v0.16.0
+# X5Agent — v0.84.0
 
 Professional agent with one built-in model (embedding) plus universal
 connections to any AI model through **AI Models** templates.
 
+## License and commercial use
+
+X5Agent is source-available under the **Business Source License 1.1**. Copying,
+modification and non-production use are permitted. Production use, internal
+business use and resale require a commercial license from X5Coder until the
+Change Date, after which the Change License (Apache License 2.0) applies to that
+version.
+
+- Full terms: `LICENSE`
+- Commercial scope: `COMMERCIAL_LICENSE.md`
+- Names and logos: `TRADEMARK.md`
+- Third-party notices: `NOTICE`
+
+Do not remove, hide or bypass the license checks, the protected-code notice or
+the device binding. Protected code is verified against a signed manifest and
+repaired quietly from a local snapshot when it changes. Commercial licensing and
+feature requests: https://x5agent.com/community
+
 ---
 
-## Setup — unified install / update command (v0.16.0)
+## Setup — unified install / update command (v0.84.0)
 
 **One command installs a fresh copy OR updates an existing one** (same command,
 safe to re-run — source only via `git pull --ff-only`, `X5Agent/Data` untouched):
@@ -14,8 +32,8 @@ safe to re-run — source only via `git pull --ff-only`, `X5Agent/Data` untouche
 curl -fsSL https://raw.githubusercontent.com/X5Coder/X5Agent/main/setup.sh | bash
 ```
 
-Verify after update: open Settings → Updates (must show `0.16.0`) or check
-`updates.json` → `"version": "0.16.0". Then hard-refresh the console page
+Verify after update: open Settings → Updates (must show `0.84.0`) or check
+`updates.json` → `"version": "0.84.0"`. Then hard-refresh the console page
 (Ctrl+Shift+R) so the new `live-url.js`/`chat.js` take effect.
 
 **Requirements: Python 3.10+** (full browser support — `x5browser==1.6.2`

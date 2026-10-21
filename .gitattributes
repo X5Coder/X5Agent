@@ -1,0 +1,51 @@
+# Normalize source files so a Windows checkout and a Linux/macOS checkout
+# produce the same SHA-256 for the signed manifest.
+* text=auto eol=lf
+
+*.py text eol=lf
+*.pyi text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.pem text eol=lf
+Dockerfile text eol=lf
+*.service text eol=lf
+
+# Windows launchers and installer scripts stay CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.iss text eol=crlf
+
+# Compiled objects and binary assets are never normalized.
+*.pyd binary
+*.so binary
+*.dll binary
+*.dylib binary
+*.exe binary
+*.pyc binary
+*.zip binary
+*.whl binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.safetensors binary
+*.bin binary
+*.pt binary
+*.pth binary
+*.onnx binary

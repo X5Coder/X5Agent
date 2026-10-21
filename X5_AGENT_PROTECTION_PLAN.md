@@ -58,7 +58,7 @@ The security goals are therefore:
 
 Residual risks that remain after all phases:
 
-- A clean-room fork can run local-only features with its own keys and no Aegis.
+- A clean-room fork can run local-only features with its own keys and no Agent.
 - A patched official client can ignore local checks and run an old build offline.
 - A user with full debugger control can bypass local UI restrictions.
 - Legal action, trademark, DMCA, and commercial licensing remain the only recourse against a determined clean-room fork.
@@ -81,7 +81,7 @@ These residuals are accepted and documented. The plan reduces their business imp
 
 This is the easiest attack and the plan does not pretend to stop it technically.
 
-A fork is a new trust root. If the attacker removes Aegis, creates a new manifest, signs it with their own key, and ships a clean build, the official client-side checks are irrelevant.
+A fork is a new trust root. If the attacker removes Agent, creates a new manifest, signs it with their own key, and ships a clean build, the official client-side checks are irrelevant.
 
 New controls:
 
@@ -95,7 +95,7 @@ New controls:
    - High-value paid features are gated by a short-lived capability token signed by `K_license`.
    - Capability claims: `device_id`, `plan`, `feature`, `mroot`, `build`, `release_key_id`, `exp`.
    - The token is issued only after the server verifies the device, plan, build, and release.
-   - Removing local Aegis does not create a valid capability.
+   - Removing local Agent does not create a valid capability.
    - This is the strongest technical answer to a fork, and the plan should move premium value here where practical.
 
 3. **Official update channel**
@@ -134,7 +134,7 @@ Residual risk:
 
 ### 1.4 Attack 2 — running without the official entrypoint or patching guards in memory
 
-Running `python main.py` bypasses `aegis_boot`, the service, and the boot seal. A wrapper or `sitecustomize.py` can replace `require_tool`, `loop_guard`, and `action_guard` in memory while all files remain valid.
+Running `python main.py` bypasses `agent_boot`, the service, and the boot seal. A wrapper or `sitecustomize.py` can replace `require_tool`, `loop_guard`, and `action_guard` in memory while all files remain valid.
 
 New controls:
 
@@ -146,7 +146,7 @@ New controls:
    - Add only the verified bundled `site-packages` and the project root to `sys.path`.
 
 2. **Boot attestation**
-   - `aegis_boot.py` creates a short-lived boot attestation.
+   - `agent_boot.py` creates a short-lived boot attestation.
    - Fields: `pid`, process start time, random nonce, `policy_hash`, `manifest_root`, `boot_mode`, `signed_at`.
    - The attestation is signed by the device key and stored in the OS secure store.
    - Critical modules check that the process is the attested process before enabling licensed features.
@@ -176,13 +176,13 @@ New controls:
    - The goal is to raise the cost, not to claim impossibility.
 
 6. **No single security module**
-   - `aegis.require_tool`, `loop_guard`, `action_guard`, server middleware, dispatcher, gateway, scheduler, trigger, and studio all check independently.
+   - `agent.require_tool`, `loop_guard`, `action_guard`, server middleware, dispatcher, gateway, scheduler, trigger, and studio all check independently.
    - Replacing one does not disable the others.
    - The server still denies capabilities for an unattested build.
 
 7. **Entrypoint policy**
    - `main.py` refuses to enable licensed features unless the boot attestation is valid.
-   - The official `x5agent` command and service always use `aegis_boot.py`.
+   - The official `x5agent` command and service always use `agent_boot.py`.
    - The UI shows `Unsupported launch mode` instead of pretending everything is valid.
    - This local check is UX; the server capability check is the authority.
 
@@ -238,7 +238,7 @@ New controls:
    - Data is backed up, validated, and migrated with copy-on-write.
    - Data is never hashed as protected code.
    - Data changes never trigger self-heal.
-   - Self-heal never writes to Data except its own `aegis/snapshot` and `aegis/state`.
+   - Self-heal never writes to Data except its own `agent/snapshot` and `agent/state`.
 
 Residual risk:
 - The user can still modify their own data.
@@ -329,11 +329,11 @@ Residual risk:
 Obfuscation is not a security boundary, but it raises the cost for the critical modules.
 
 Scope only:
-- `aegis_boot.py`
-- `core/aegis/trust.py`
-- `core/aegis/seal.py`
-- `core/aegis/heal.py`
-- `core/aegis/updater.py`
+- `agent_boot.py`
+- `core/agent_guard/trust.py`
+- `core/agent_guard/seal.py`
+- `core/agent_guard/heal.py`
+- `core/agent_guard/updater.py`
 - `core/licensing/entitlement.py`
 - `core/licensing/service.py`
 - `core/licensing/device.py`
@@ -373,7 +373,7 @@ These are hard requirements for every phase:
 
 1. Verification and repair never modify user data.
 2. `X5Agent/Data`, `X5Agent/Workspace`, user skills, models, and uploaded files are never deleted, rewritten, or migrated without an explicit backup and a reversible migration.
-3. Self-heal writes only to protected code roots and `X5Agent/Data/aegis/`.
+3. Self-heal writes only to protected code roots and `X5Agent/Data/agent/`.
 4. The manifest excludes user data.
 5. The updater preserves volumes, `.env`, database, studios, and Workspace.
 6. Tests use temporary directories and never touch the real `X5Agent/Data`.
@@ -431,8 +431,8 @@ This plan is engineering guidance, not legal advice. A lawyer must review the fi
 ### 3.1 `K_release`
 
 Signs:
-- `aegis.policy.json`
-- `aegis.manifest.json`
+- `agent.policy.json`
+- `agent.manifest.json`
 - `release.json`
 - generated guard envelopes
 - the release package metadata
@@ -550,11 +550,11 @@ Result:
 
 ## 5. Signed policy: pinning the server and repository
 
-`aegis.policy.json` is signed by `K_release`.
+`agent.policy.json` is signed by `K_release`.
 
 ```json
 {
-  "schema": "x5-aegis-policy/1",
+  "schema": "x5-agent-policy/1",
   "license_servers": ["https://dex.awnlearn.com"],
   "license_public_key_id": "license-2026-01",
   "repo": "X5Coder/X5Agent",
@@ -587,7 +587,7 @@ Production rules:
 - `X5_LICENSE_BYPASS` works only inside pytest.
 - Changing `license_servers` without a valid signature is rejected.
 - Changing `repo` without a valid signature is rejected.
-- Changing `aegis.policy.json` breaks its signature.
+- Changing `agent.policy.json` breaks its signature.
 - Changing `updates.json` breaks the manifest.
 - Changing `.git/config` or the Git remote has no effect because the updater never uses Git.
 - `release_key_id`, `allowed_builds`, and `allowed_mroots` are part of the signed policy.
@@ -605,11 +605,11 @@ A fork signed with a different key is not in the official allowlist, so the offi
 
 ## 6. Signed manifest
 
-`aegis.manifest.json`:
+`agent.manifest.json`:
 
 ```json
 {
-  "schema": "x5-aegis-manifest/1",
+  "schema": "x5-agent-manifest/1",
   "version": "0.81.0",
   "commit": "<full-git-sha>",
   "build": "<full-git-sha>",
@@ -631,7 +631,7 @@ A fork signed with a different key is not in the official allowlist, so the offi
 ```
 
 - `root` = SHA-256 over sorted file entries plus `version` and `commit`.
-- `aegis.manifest.sig` = Ed25519 signature over `root`.
+- `agent.manifest.sig` = Ed25519 signature over `root`.
 - The manifest does not sign itself.
 
 ### Included
@@ -691,13 +691,13 @@ Current code footprint is about 341 files and 6.4MB. Full verification is cheap,
 - Every 10 minutes.
 - 24 critical files only:
   - `launch.py`
-  - `aegis_boot.py`
+  - `agent_boot.py`
   - `web/server/server.py`
   - `core/agent/loop/dispatcher.py`
   - `core/agent/loop/engine.py`
   - `core/licensing/*`
-  - `core/aegis/points.py`
-  - `core/aegis/seal.py`
+  - `core/agent_guard/points.py`
+  - `core/agent_guard/seal.py`
   - `gateway/dispatch.py`
   - `core/scheduler/engine.py`
   - `core/trigger/engine.py`
@@ -721,7 +721,7 @@ Current code footprint is about 341 files and 6.4MB. Full verification is cheap,
 - When `mroot` changes.
 - When the app opens after a long shutdown.
 
-### Aegis Points
+### Agent Points
 
 - Do not scan files.
 - Read the in-memory `SealState`.
@@ -748,11 +748,11 @@ Targets:
 
 ---
 
-## 8. Distributed Aegis Points
+## 8. Distributed Agent Points
 
 There is no single `security.py`.
 
-1. `aegis_boot.py`
+1. `agent_boot.py`
    - Outside the project tree.
    - Verifies before any project import.
    - Restores from the signed snapshot.
@@ -760,57 +760,57 @@ There is no single `security.py`.
 2. `web/server/server.py`
    - One middleware for every HTTP request.
    - Checks `SealState`, `policy_hash`, entitlement, and device.
-   - Exceptions only: login, `/api/auth/status`, `/api/aegis/status`, repair endpoint.
+   - Exceptions only: login, `/api/auth/status`, `/api/agent/status`, repair endpoint.
 
 3. `core/agent/loop/dispatcher.py`
-   - `aegis.require_tool(name)` before every tool.
+   - `agent.require_tool(name)` before every tool.
 
 4. `core/agent/loop/engine.py`
-   - `aegis.loop_guard()` before starting, before every tool batch, before every model call, and before resuming a stopped task.
+   - `agent.loop_guard()` before starting, before every tool batch, before every model call, and before resuming a stopped task.
 
 5. `gateway/dispatch.py`
-   - `aegis.action_guard("gateway")`.
+   - `agent.action_guard("gateway")`.
 
 6. `core/scheduler/engine.py`
-   - `aegis.action_guard("scheduler")`.
+   - `agent.action_guard("scheduler")`.
 
 7. `core/trigger/engine.py`
-   - `aegis.action_guard("trigger")`.
+   - `agent.action_guard("trigger")`.
 
 8. `core/agent/studio/api.py`
-   - `aegis.action_guard("studio")`.
+   - `agent.action_guard("studio")`.
 
 9. Every `tool.py`
-   - Generated `aegis.local_guard(__name__)`.
+   - Generated `agent.local_guard(__name__)`.
 
 10. `web/frontend`
     - Shows verification status only.
     - The server remains the authority.
 
-11. `core/aegis/launch_guard.py`
+11. `core/agent_guard/launch_guard.py`
     - Verifies the official launch mode, `sys.path`, `sitecustomize`, and `.pth`.
     - Marks `python main.py` and unknown wrappers as unsupported.
 
-12. `core/aegis/import_guard.py`
+12. `core/agent_guard/import_guard.py`
     - Rejects protected imports from `Data/`, `skills/`, `models/`, and untrusted `.pyc`.
     - Installs the audit hook early.
 
-13. `core/aegis/time_guard.py`
+13. `core/agent_guard/time_guard.py`
     - Checks `server_time`, monotonic time, boot id, and clock rollback.
     - Never trusts the local wall clock for new leases.
 
-14. `core/aegis/capability.py`
+14. `core/agent_guard/capability.py`
     - Verifies feature-scoped capability tokens.
     - A missing or invalid capability disables that feature, not the whole app.
 
-15. `core/aegis/native/`
+15. `core/agent_guard/native/`
     - Boot attestation verification.
     - Guard self-checks.
     - Preload and clock-tamper detection.
     - Harder to patch than pure Python.
 
 Generator:
-- `scripts/aegis_inject.py` adds guards.
+- `scripts/agent_inject.py` adds guards.
 - Guard names and locations change per release.
 - 80+ points without 80 manual edits.
 - Deleting one point does not disable the rest.
@@ -876,17 +876,17 @@ Offline:
 
 A strong coding agent may delete the project root directly. Protection inside the project alone is not enough.
 
-### Root A: `aegis_boot.py`
+### Root A: `agent_boot.py`
 
 - Outside `project/`.
-- Linux: `/usr/local/lib/x5agent-boot/aegis_boot.py`
-- Windows: `%ProgramData%\X5Agent\boot\aegis_boot.py`
-- macOS: `/Library/Application Support/X5Agent/boot/aegis_boot.py`
+- Linux: `/usr/local/lib/x5agent-boot/agent_boot.py`
+- Windows: `%ProgramData%\X5Agent\boot\agent_boot.py`
+- macOS: `/Library/Application Support/X5Agent/boot/agent_boot.py`
 - Verifies the manifest and restores before starting the project.
 
 ### Root B: signed snapshot
 
-- `X5Agent/Data/aegis/snapshot/`
+- `X5Agent/Data/agent/snapshot/`
 - A complete signed copy of the release code.
 - 6.4MB.
 - Survives deletion of `project/`.
@@ -897,7 +897,7 @@ A strong coding agent may delete the project root directly. Protection inside th
 - Linux: `systemd` `x5agent.service`
 - Windows: Windows Service or Scheduled Task at startup
 - macOS: `launchd` `KeepAlive`
-- Runs `aegis_boot.py`, not `launch.py` directly.
+- Runs `agent_boot.py`, not `launch.py` directly.
 - `Restart=always`.
 - `ExecStartPre` runs restore.
 
@@ -905,12 +905,12 @@ A strong coding agent may delete the project root directly. Protection inside th
 
 - `x5agent` command in `PATH`.
 - `start-x5agent.ps1` / `setup.sh`.
-- Verifies `aegis_boot.py` hash and re-downloads it if needed.
+- Verifies `agent_boot.py` hash and re-downloads it if needed.
 
 ### Outcomes
 
 - `project/` deleted: Root A restores it.
-- `core/aegis` deleted: Root A restores it.
+- `core/agent_guard` deleted: Root A restores it.
 - Guards deleted: the manifest restores them.
 - Snapshot deleted: Root A downloads only the missing files.
 - Root A deleted: the service/launcher restores it.
@@ -920,7 +920,7 @@ Hardened Linux option:
 - `/opt/x5agent` owned by root.
 - Service runs as user `x5agent`.
 - Code is read-only.
-- `aegis_boot` in `/usr/local/lib` is root-owned.
+- `agent_boot` in `/usr/local/lib` is root-owned.
 - Snapshot in `/var/lib/x5agent` is root-owned.
 - This prevents a user-level agent from deleting the roots.
 
@@ -996,13 +996,13 @@ Syntax by file type:
 
 ### 11.4 Automatic injection
 
-`scripts/aegis_notice.py` owns injection and verification:
+`scripts/agent_notice.py` owns injection and verification:
 
 ```text
-aegis_notice.py --inject
-aegis_notice.py --verify
-aegis_notice.py --inject --file <path>
-aegis_notice.py --verify --file <path>
+agent_notice.py --inject
+agent_notice.py --verify
+agent_notice.py --inject --file <path>
+agent_notice.py --verify --file <path>
 ```
 
 - `--inject` inserts the exact notice and unique decorations.
@@ -1038,7 +1038,7 @@ Three layers:
    - When creating or editing protected code, opencode must insert the notice as a comment before every important section.
    - When editing an existing protected file, it must preserve or restore the notice.
    - When the task is only documentation or JSON, it must not corrupt the format.
-   - If `scripts/aegis_notice.py` exists, run it after edits; otherwise insert the notice manually.
+   - If `scripts/agent_notice.py` exists, run it after edits; otherwise insert the notice manually.
 
 ---
 
@@ -1194,7 +1194,7 @@ All official start paths use the same restricted launch:
 
 - Scheduled Task at logon or Windows Service.
 - Optional Start with Windows.
-- `start-x5agent.ps1` calls `aegis_boot.py`.
+- `start-x5agent.ps1` calls `agent_boot.py`.
 
 ### Ubuntu 24/7
 
@@ -1206,8 +1206,8 @@ After=network-online.target
 [Service]
 Restart=always
 RestartSec=5
-ExecStartPre=/usr/local/lib/x5agent-boot/aegis_boot.py --restore
-ExecStart=/usr/local/lib/x5agent-boot/aegis_boot.py --run
+ExecStartPre=/usr/local/lib/x5agent-boot/agent_boot.py --restore
+ExecStart=/usr/local/lib/x5agent-boot/agent_boot.py --run
 WorkingDirectory=/opt/x5agent
 User=x5agent
 
@@ -1239,10 +1239,10 @@ WantedBy=multi-user.target
 
 Protection is present in:
 
-- `aegis_boot.py` outside the project.
+- `agent_boot.py` outside the project.
 - the OS service outside the project.
 - the signed snapshot inside Data.
-- `core/aegis` split across modules.
+- `core/agent_guard` split across modules.
 - server middleware.
 - dispatcher, engine, gateway, scheduler, trigger, and studio.
 - 80+ generated guards inside tools.
@@ -1257,7 +1257,7 @@ Protection is present in:
 
 If an agent deletes:
 - one file: the others detect it;
-- `core/aegis`: Root A restores it;
+- `core/agent_guard`: Root A restores it;
 - tools: the manifest restores them;
 - the root: the service restores it;
 - everything with destructive privileges: reinstall is required.
@@ -1274,7 +1274,7 @@ There is no single "security file" to delete and then edit freely.
 | Fast Tick | `stat` every 60s, negligible |
 | Critical Hash | 1MB every 10 minutes, under 50ms |
 | Full Seal | 6.4MB every 6 idle hours |
-| Aegis Points | under 1ms, no I/O |
+| Agent Points | under 1ms, no I/O |
 | Launch guard | one-time, under 20ms |
 | Import guard | one-time, under 10ms |
 | Native attestation | under 10ms |
@@ -1298,7 +1298,7 @@ Not allowed:
 
 1. Delete `engine.py` and verify restoration before startup.
 2. Modify `server.py` and verify manifest detection plus silent repair.
-3. Delete `core/aegis` and verify Root A restoration.
+3. Delete `core/agent_guard` and verify Root A restoration.
 4. Delete all tools and verify manifest restoration.
 5. Modify `manifest.json` and verify signature failure.
 6. Modify `policy.json` and verify signature failure.
@@ -1330,7 +1330,7 @@ Not allowed:
 32. Run with `libfaketime` and verify the preload/clock status is untrusted.
 33. Freeze an old build, stop the heartbeat, and verify the server refuses its capabilities after token expiry.
 34. Re-sign a fork with a new key and verify the official server refuses `release_key_id`, `build`, and `mroot`.
-35. Remove Aegis from a fork and verify it cannot obtain official capabilities or updates.
+35. Remove Agent from a fork and verify it cannot obtain official capabilities or updates.
 36. Verify a capability token cannot be reused across devices, releases, or features.
 37. Verify a clock rollback never deletes or modifies Data.
 38. Verify an unsupported launch mode never writes to Data.
@@ -1347,9 +1347,9 @@ Not allowed:
 
 ### Phase 0 — Safe launch and code isolation
 
-- `core/aegis/launch_guard.py` (boot mode, sys.path, `sitecustomize`/`.pth` checks)
-- `core/aegis/import_guard.py` (no imports from Data/skills/models, no trusted `.pyc`)
-- `core/aegis/time_guard.py` (server time, monotonic clock, rollback detection)
+- `core/agent_guard/launch_guard.py` (boot mode, sys.path, `sitecustomize`/`.pth` checks)
+- `core/agent_guard/import_guard.py` (no imports from Data/skills/models, no trusted `.pyc`)
+- `core/agent_guard/time_guard.py` (server time, monotonic clock, rollback detection)
 - restricted launcher flags and environment
 - `main.py` unsupported-launch refusal
 - skill/model loader hardening (text-only skills, safetensors only)
@@ -1358,32 +1358,39 @@ Not allowed:
 
 ### Phase 1 — Foundation
 
-- `aegis.policy.json`
-- `aegis.manifest.json`
+Status: implemented in `0.83.0` (signed policy + manifest, pinned release key,
+build/sign scripts, legal files, `.gitattributes`, signature/hash tests).
+
+- `agent.policy.json`
+- `agent.manifest.json`
 - signatures
-- `core/aegis/trust.py`
-- `core/aegis/manifest.py`
-- `core/aegis/seal.py`
-- `aegis_boot.py`
+- `core/agent_guard/trust.py`
+- `core/agent_guard/manifest.py`
+- `core/agent_guard/seal.py`
+- `agent_boot.py`
 - `.gitattributes` with `eol=lf`
 - license, commercial, and trademark files
 - signature and hash tests
 
 ### Phase 2 — Silent repair
 
-- local signed snapshot
-- delta comparison
-- SilentRepair and queue
-- Local Safe Mode
-- OS service integration
+Status: core implemented in `0.84.0` (`core/agent_guard/heal.py` + `scripts/agent_repair.py`
++ `agent_boot.py` integration + `tests/test_agent_heal.py`); the Linux/Windows/macOS
+service installers are the remaining part of this phase.
+
+- [x] local signed snapshot (`Data/agent/snapshot`, seeded on boot/`--snapshot`)
+- [x] delta comparison (changed/missing/extra against the signed manifest)
+- [x] SilentRepair and queue (snapshot -> pinned GitHub -> license mirror, hash-checked atomic writes, bounded 3 attempts/10s/8MB/64MB)
+- [x] Local Safe Mode (`Data/agent/safe_mode.json`, quiet `Checking installation`)
+- [ ] OS service integration (systemd / Windows scheduled task / launchd installers)
 
 ### Phase 3 — Distribution and notice
 
-- `core/aegis/points.py`
+- `core/agent_guard/points.py`
 - server middleware
 - dispatcher, engine, gateway, scheduler, trigger, studio
-- `scripts/aegis_inject.py` for 80 guards
-- `scripts/aegis_notice.py` inject/verify
+- `scripts/agent_inject.py` for 80 guards
+- `scripts/agent_notice.py` inject/verify
 - pre-commit hook and GitHub Action
 - exact protected-code notice injection
 
@@ -1438,39 +1445,40 @@ Not allowed:
 
 ### New
 
-- `project/core/aegis/trust.py`
-- `project/core/aegis/manifest.py`
-- `project/core/aegis/seal.py`
-- `project/core/aegis/envelope.py`
-- `project/core/aegis/points.py`
-- `project/core/aegis/heal.py`
-- `project/core/aegis/updater.py`
-- `project/core/aegis/capability.py`
-- `project/core/aegis/launch_guard.py`
-- `project/core/aegis/import_guard.py`
-- `project/core/aegis/time_guard.py`
-- `project/core/aegis/boot_attestation.py`
-- `project/core/aegis/native/loader.c` or equivalent
-- `project/core/aegis/native/build.py`
-- `project/aegis/policy.json`
-- `project/aegis/policy.sig`
-- `project/aegis/manifest.json`
-- `project/aegis/manifest.sig`
-- `project/aegis/release_public_key.pem`
-- `project/aegis/guards/*.bin`
-- `aegis_boot.py`
-- `project/scripts/aegis_build.py`
-- `project/scripts/aegis_inject.py`
-- `project/scripts/aegis_notice.py`
-- `project/scripts/aegis_sign.py`
-- `project/scripts/aegis_keygen.py`
-- `.github/workflows/aegis-release.yml`
+- `project/core/agent_guard/trust.py`
+- `project/core/agent_guard/manifest.py`
+- `project/core/agent_guard/seal.py`
+- `project/core/agent_guard/envelope.py`
+- `project/core/agent_guard/points.py`
+- `project/core/agent_guard/heal.py`
+- `project/core/agent_guard/updater.py`
+- `project/core/agent_guard/capability.py`
+- `project/core/agent_guard/launch_guard.py`
+- `project/core/agent_guard/import_guard.py`
+- `project/core/agent_guard/time_guard.py`
+- `project/core/agent_guard/boot_attestation.py`
+- `project/core/agent_guard/native/loader.c` or equivalent
+- `project/core/agent_guard/native/build.py`
+- `project/agent/policy.json`
+- `project/agent/policy.sig`
+- `project/agent/manifest.json`
+- `project/agent/manifest.sig`
+- `project/agent/release_public_key.pem`
+- `project/agent/guards/*.bin`
+- `agent_boot.py`
+- `project/scripts/agent_build.py`
+- `project/scripts/agent_inject.py`
+- `project/scripts/agent_notice.py`
+- `project/scripts/agent_sign.py`
+- `project/scripts/agent_keygen.py`
+- `.github/workflows/agent-release.yml`
 - `.pre-commit-config.yaml`
-- `project/tests/test_aegis.py`
-- `project/tests/test_aegis_launch.py`
-- `project/tests/test_aegis_imports.py`
-- `project/tests/test_aegis_time.py`
-- `project/tests/test_aegis_capability.py`
+- `project/tests/test_agent.py`
+- `project/tests/test_agent_trust.py`
+- `project/tests/test_agent_launch.py`
+- `project/tests/test_agent_imports.py`
+- `project/tests/test_agent_time.py`
+- `project/tests/test_agent_capability.py`
 - `LICENSE`
 - `COMMERCIAL_LICENSE.md`
 - `TRADEMARK.md`

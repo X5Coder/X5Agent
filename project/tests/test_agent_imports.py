@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from core.aegis import import_guard, launch_guard
+from core.agent_guard import import_guard, launch_guard
 
 
 @pytest.fixture(autouse=True)
@@ -33,7 +33,7 @@ def test_forbidden_path_detection(monkeypatch, tmp_path):
 def test_import_guard_blocks_data_module(monkeypatch, tmp_path):
     skills = tmp_path / "skills"
     skills.mkdir()
-    module_name = "aegis_forbidden_sample"
+    module_name = "agent_forbidden_sample"
     (skills / f"{module_name}.py").write_text("VALUE = 1\n", encoding="utf-8")
     monkeypatch.setattr(
         launch_guard,

@@ -24,8 +24,12 @@ Project root contains:
 - `Design Rules.md` — Section 0 base design rules (priority ladder + process + tokens-only + a11y/RTL/motion checklist), loaded first every chat
 - `Master Code Rules.md` — the canonical rules file (source of truth)
 - `X5_AGENT_PROTECTION_PLAN.md` — the authoritative XAP/1 protection plan (license, device keys, signed manifest/policy, silent self-heal, boot roots, protected-code notice + opencode injection)
-- `aegis_boot.py` — the official XAP/1 launcher (`X5_AEGIS_BOOT=1`, sanitized path, then `project/launch.py`)
+- `agent_boot.py` — the official XAP/1 launcher (`X5_AGENT_BOOT=1`, sanitized path, then `project/launch.py`)
 - `PROJECT_MAP.md` — the standard project structure blueprint (must stay in sync with disk)
+- `LICENSE` — Business Source License 1.1 parameters (production use needs a commercial license until the Change Date)
+- `NOTICE` / `COMMERCIAL_LICENSE.md` / `TRADEMARK.md` — copyright, commercial scope and name/logo policy
+- `CONTRIBUTING.md` / `SECURITY.md` — CLA + contribution rules and private vulnerability reporting
+- `.gitattributes` — normalized line endings so a signed manifest hashes the same on Windows and Linux
 - `updates.json` — the single update source (see Updates-file rule below)
 - `project/` — physical skeleton (see map for layout)
 - `opencode.json` — enforces auto-loading via `instructions` field
@@ -50,8 +54,8 @@ When creating or editing protected code:
    unique across the whole release.
 4. Never alter, translate, shorten, reorder, or remove the text inside the
    notice. Only the stars and the trailing number change.
-5. If `project/scripts/aegis_notice.py` exists, run
-   `python project/scripts/aegis_notice.py --inject --file <path>` after the
+5. If `project/scripts/agent_notice.py` exists, run
+   `python project/scripts/agent_notice.py --inject --file <path>` after the
    edit; otherwise insert the notice manually.
 6. JSON files cannot contain comments. Never break JSON. The signed manifest
    covers JSON files; add a `_notice` field only when its parser explicitly
