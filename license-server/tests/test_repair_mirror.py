@@ -38,6 +38,13 @@ def test_serves_the_launcher(client: TestClient, monkeypatch) -> None:
     assert response.content == b"launcher"
 
 
+def test_serves_the_protected_update_file(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(repair_mirror, "_download", lambda *_: b"{}")
+    response = _get(client, "updates.json")
+    assert response.status_code == 200
+    assert response.content == b"{}"
+
+
 @pytest.mark.parametrize("commit", ["abc", "A" * 40, "g" * 40])
 def test_rejects_a_bad_commit(client: TestClient, commit: str) -> None:
     response = _get(client, "project/core/agent_guard/seal.py", commit=commit)

@@ -27,6 +27,10 @@ REQUEST_TIMEOUT_SECONDS = 10.0
 MAX_PATH_LENGTH = 300
 USER_AGENT = "X5Agent-RepairMirror/1.0"
 
+# The signed manifest also protects this root file, so repair must be able to
+# fetch it. Everything else outside `project/` stays unreachable.
+ROOT_FILES = {"agent_boot.py", "updates.json"}
+
 # Files the signed manifest never contains: secrets, local databases, caches
 # and build artifacts. Keeping them out of the mirror means a malformed request
 # can never turn this endpoint into a generic repository reader.
@@ -88,7 +92,7 @@ def normalize_request(commit: str, file_path: str) -> tuple[str, str]:
         raise RepairMirrorError(404, "not_found")
 
     normalized = relative.as_posix()
-    if normalized != "agent_boot.py" and not normalized.startswith("project/"):
+    if normalized not in ROOT_FILES and not normalized.startswith("project/"):
         raise RepairMirrorError(404, "not_found")
     if relative.suffix.lower() in BLOCKED_SUFFIXES:
         raise RepairMirrorError(404, "not_found")

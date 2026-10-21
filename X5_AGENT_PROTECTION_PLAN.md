@@ -846,9 +846,9 @@ SilentRepair:
 - Copies from the local signed snapshot first.
 - Then fetches from GitHub at the pinned commit.
 - Then fetches from the license-server mirror (`GET /mirror/<commit>/<path>`:
-  40-hex commit, `agent_boot.py` or `project/` only, no secrets/databases/
-  caches, 8MB cap, 10s timeout; the server always reads the public repository,
-  never a caller-supplied URL).
+  40-hex commit, `agent_boot.py`, `updates.json` or `project/` only, no secrets/
+  databases/caches, 8MB cap, 10s timeout; the server always reads the public
+  repository, never a caller-supplied URL).
 - Verifies every file hash before writing.
 - Writes atomically: temp file, then `os.replace`.
 - Never touches `X5Agent/Data`.
