@@ -1,13 +1,13 @@
 {
   "schema": "x5-agent-manifest/1",
-  "version": "0.84.0",
-  "commit": "a4a6d027d65681dfc576212fa6ebb67ade28f567",
-  "build": "a4a6d027d65681dfc576212fa6ebb67ade28f567",
+  "version": "0.85.0",
+  "commit": "fc0a866eaca1674d77da736165a47dd516b9c5a2",
+  "build": "fc0a866eaca1674d77da736165a47dd516b9c5a2",
   "release_key_id": "release-2026-01",
   "policy_hash": "97147c746b347c763db3013aef271c1ce5e647ec4e694a61e16713410baca030",
   "key_id": "release-2026-01",
-  "generated_at": "2026-10-21T10:25:41Z",
-  "root": "a4ba8f5c9a9ccb39d79ce229edd813624060ddf3ff35ea8bdbd2e648119605a9",
+  "generated_at": "2026-10-21T10:26:51Z",
+  "root": "343c83f6ade3290e3a452d54d5d841e21a64f8396098f90f3dd542ac10503c76",
   "files": [
     {
       "path": "agent_boot.py",
@@ -2314,8 +2314,8 @@
     },
     {
       "path": "updates.json",
-      "sha256": "0ba9727f584b624db067897f4c0e2ef9c6837213715b6a49707617d3f195c078",
-      "size": 57033,
+      "sha256": "0e70a1d4ae02291af73b14a984bdb7af5810304de97d03c8bbded7eb8c311b34",
+      "size": 57906,
       "mode": "100644",
       "notice_count": 0
     }

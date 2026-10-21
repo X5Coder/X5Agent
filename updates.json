@@ -1,7 +1,11 @@
 {
-  "version": "0.84.0",
-  "description": "XAP/1 Phase 2 adds silent self-heal. Protected files are compared against the signed manifest, and changed or missing files are restored quietly from the local signed snapshot first, then from the pinned GitHub commit, then from the license-server mirror. Every candidate is hash-checked before an atomic replace, unexpected protected files are quarantined instead of deleted, and a failed repair enters Local Safe Mode with a quiet \"Checking installation\" status. User data is never read or changed, a repair queue holds sensitive actions until the tree is trusted again, and a safe boot-service generator starts agent_boot.py on Linux, macOS or Windows.",
+  "version": "0.85.0",
+  "description": "XAP/1 Phase 3 adds a self-healing guard bootstrap and a protected-code notice gate. The official launcher now verifies the signed policy and manifest with the pinned key and restores a deleted or changed project/core/agent_guard before importing it, and the repair CLI uses the same bootstrap so a missing trust.py or heal.py can no longer break repair. A tampered policy or manifest is refused as a structured safe-mode answer. A new notice tool injects and verifies the exact notice with unique stars and number per occurrence, and a tracked pre-commit hook plus a GitHub Actions workflow check the signed manifest and notices on every commit and push.",
   "features": [
+    "The official launcher can now restore a deleted or modified guard package before it imports anything: it verifies the signed policy and manifest with the pinned key, then restores only project/core/agent_guard from the local signed snapshot or the pinned GitHub commit.",
+    "The repair CLI uses the same bootstrap, so deleting trust.py or heal.py no longer breaks the repair command; a tampered policy or manifest now answers with a structured safe-mode refusal instead of a traceback.",
+    "New agent_notice.py injects and verifies the exact protected-code notice with a unique star count and number per occurrence, keeps shebangs and CRLF line endings, and refuses JSON so it can never corrupt it.",
+    "A tracked .githooks/pre-commit hook and a new GitHub Actions protection workflow check the signed manifest and the protected notices on every commit and push.",
     "New core/agent_guard/heal.py: SilentRepair compares the signed manifest with the files and restores changed or missing protected files without any error dialog.",
     "Repair order is local signed snapshot -> pinned GitHub commit -> license-server mirror; every candidate is SHA-256 checked before an atomic replace.",
     "Unexpected files inside protected code roots are moved to Data/agent/quarantine instead of being deleted.",
