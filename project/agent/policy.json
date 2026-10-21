@@ -17,7 +17,8 @@
   "key_id": "release-2026-01",
   "release_key_id": "release-2026-01",
   "allowed_builds": [
-    "495f628b6ca3a8169905a93192d06b5f137b12ce"
+    "495f628b6ca3a8169905a93192d06b5f137b12ce",
+    "632afbab44468e704172d64f9418374f3eb479a6"
   ],
   "allowed_mroots": [],
   "capability_ttl_seconds": 300,
