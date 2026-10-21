@@ -1,4 +1,4 @@
-name: Build release
+﻿name: Build release
 
 # Compiles the source-hidden release trees for every supported platform.
 # Cross-compilation is impossible (a .so/.pyd is tied to one OS + Python ABI),
@@ -48,7 +48,7 @@ jobs:
             tag: macos-arm64
             python: "3.12"
             flavor: full
-          - os: macos-13
+          - os: macos-15-intel
             tag: macos-x64
             python: "3.12"
             flavor: full
